@@ -88,7 +88,7 @@ pip install quest-decoding
 ## <div align="center">Contact</div>
 
 For bugs and feature requests please visit [GitHub Issues](https://github.com/goncalorafaria/quest-decoding/issues). For business inquiries or
-professional support requests please send an [e-mail](goncalofaria.research@gmail.com).
+professional support requests please send an [e-mail](mailto:goncalofaria.research@gmail.com).
 
 -----
 
