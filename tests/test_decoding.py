@@ -6,8 +6,6 @@ from quest.index import Uniform
 
 import os
 
-
-
 class LengthReward(Reward):
 
     def __init__(

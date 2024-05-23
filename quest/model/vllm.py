@@ -1,8 +1,6 @@
 from quest.model.base import LanguageModel
 from langchain.prompts import PromptTemplate
-import os
 import numpy as np
-import torch
 from langchain.prompts import PromptTemplate
 from transformers import  AutoTokenizer
 

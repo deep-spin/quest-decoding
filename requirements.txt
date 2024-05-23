@@ -1,0 +1,5 @@
+langchain
+numpy
+transformers 
+vllm
+scipy
