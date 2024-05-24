@@ -1,10 +1,8 @@
 from langchain.prompts import PromptTemplate
 from quest.model.vllm import VLLM
-from quest.decoding import Quest, QuestRLHF
-from quest.reward.base import Reward
+from quest.decoding import Quest
 from quest.index import Uniform
-from quest.reward.model import RewardModel
-
+from quest.reward.qe import QEModel
 import os
 
 
@@ -22,27 +20,19 @@ def integrated_test():
         }
     ]
 
+    sources = [data["source_sentence"] for data in test_input_data]
+
     model = VLLM(
         model_path="haoranxu/ALMA-7B",
         prompt_template=template,
         download_dir=os.environ["HF_HOME"],
+        gpu_memory_utilization=0.6,
     )
 
-    reward = RewardModel("lvwerra/distilbert-imdb")  # sentiment model.
+    reward = QEModel("Unbabel/wmt23-cometkiwi-da")  # sentiment model.
+    reward.set_sources(sources)  # QE model requires sources to be set.
 
     index = Uniform()
-
-    chain = QuestRLHF(
-        input_data=test_input_data,
-        model=model,
-        reward=reward,
-        dist=index,
-    )
-
-    chain_outputs = chain.run(
-        steps=10,
-        use_tqdm=True,
-    )
 
     chain = Quest(
         input_data=test_input_data,

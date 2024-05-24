@@ -101,7 +101,6 @@ class Quest:
         dist: IndexDistribution,
         reward: Reward,
         beta: float = 0.1,
-        temperature: float = 0.9,
         avoid_redundancy: bool = True,
         logratio_clamp=20,
     ):
@@ -119,7 +118,6 @@ class Quest:
         self.rm = reward
         self.beta = beta
         self.model = model
-        self.temperature = temperature
         self.dist = dist
         self.avoid_redundancy = avoid_redundancy
         self.state_path = []
@@ -165,7 +163,7 @@ class Quest:
         completions_text = [s[-1] for s in self.samples]  # list of samples.
 
         completions, transition_scores = self.model.evaluate_continuation(
-            prompt, completions_text, temperature=self.temperature
+            prompt, completions_text, 
         )
 
         reward = self.compute_reward(completions_text)
@@ -208,7 +206,6 @@ class Quest:
         completions, transition_scores = self.model.continuation(
             prompt,
             prefix=None,
-            temperature=self.temperature,
         )
 
         # self.model.decode()
@@ -357,7 +354,6 @@ class Quest:
         ) = self.model.continuation(
             prompt,
             prefix,
-            temperature=self.temperature,
         )  ## add mask here -
 
         proposal = list(
@@ -421,7 +417,6 @@ class Quest:
     ):
         enough_accepts = lambda s: (len(s) - self.steps) >= 0
         inds = [i for i, s in enumerate(self.samples) if not enough_accepts(s)]
-        # print(inds)
         return inds
 
     def get_index_of_completed_chains(
@@ -455,7 +450,6 @@ class Quest:
             n = steps
 
         self.steps = steps
-        # wandb.init(project="tower-llm", entity="graf", name=run_name)
         # Draw the initial state
         self.prompt = self.model.encode(self.input_data)
 
@@ -467,29 +461,16 @@ class Quest:
 
         prev_state = state
 
-        # Initialize the samples and full lists with the initial state
-        # chains = len(source_sentence)
-        accepted = np.zeros(self.chains, dtype=np.int32)
-        # self.samples = [[t] for t in state.text]
-        # self.accepted_indices = [[] for _ in range(chains)]
-        # self.rejected_indices = [[] for _ in range(chains)]
-        # self.state_path = [{**state.to_json(), "accept": [True] * chains}]
-
         if use_tqdm:
             iter = tqdm(range(n))
         else:
             iter = range(n)
         # Run the chain for the specified number of steps
         for i in iter:
-            # Draw a transition from the current state
-            # print("--"*10)
 
-            # check & filter the sate
 
             uncomplete_indices = self.get_index_of_uncompleted_chains()
-            # complete_indices = self.get_index_of_uncompleted_chains()
 
-            # print(f"uncomplete_chains: {len(uncomplete_indices)}")
             if len(uncomplete_indices) == 0:
                 break
 
@@ -507,19 +488,10 @@ class Quest:
                 uncomplete_indices=uncomplete_indices,
             )
 
-
-            # Append the proposal to the full list
-            # full.append((proposal_state.text[0], proposal_state.reward))
-
-            ## logging.info([len(s) for s in self.samples])
             # Decide whether to accept the proposal
             accept = np.array(
                 bernoulli(A).rvs(),
             ).reshape(A.shape)
-
-            # accepted += accept
-
-            # Define a function to decide the new state values based on acceptance
 
             # Update the state values based on the acceptance
             state = Quest.State(
@@ -560,8 +532,6 @@ class Quest:
                 i for i, predi in zip(uncomplete_indices, accept) if not predi
             ]
 
-            # chains_tochange = [i for i, predi in enumerate(accept) if predi]
-            # chain_notchange = [i for i, predi in enumerate(accept) if not predi]
 
             accepted_indices_toadd = [
                 indexi
@@ -586,12 +556,6 @@ class Quest:
                 self.rejected_indices[chain].append(rejected_indices_toadd[index])
 
             self.stack(prev_state)
-
-
-            # Clear the cache periodically
-
-        # Calculate the fraction of rejections -
-        #reject_fractions = accepted / steps
 
         return Quest.Output(
             samples=self.samples, 
@@ -665,7 +629,3 @@ class QuestRLHF(Quest):
         return alpha
       
     
-if __name__ == "__main__":
-    import pdb
-
-    pdb.set_trace()

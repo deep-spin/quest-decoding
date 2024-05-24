@@ -1,16 +1,15 @@
-from typing import List, Union
+from typing import List
 from quest.reward.base import Reward
 
-import numpy as np
 from transformers import pipeline
-import logging 
 from quest.utils.logger import fix_loggers
 from quest.utils.math import clamp_logit
+
 # Ignore specific UserWarning from transformers library
 # Configure the transformers logger
 
 fix_loggers(name="transformers")
-    
+
 
 class RewardModel(Reward):
     """
@@ -33,13 +32,20 @@ class RewardModel(Reward):
 
     """
 
-    def __init__(self, model_path: str, batch_size: int = 32, device:int = 0, task:str="text-classification", clamp:float=1e-3):
+    def __init__(
+        self,
+        model_path: str,
+        batch_size: int = 32,
+        device: int = 0,
+        task: str = "text-classification",
+        clamp: float = 1e-3,
+    ):
         super().__init__()
-        
+
         self.batch_size = batch_size
         self.device = device
-        self.sentiment_pipe = pipeline(task, model=model_path, device=device)
-        self.sent_kwargs = {"batch_size": self.batch_size}
+        self.model = pipeline(task, model=model_path, device=device)
+        self.kwargs = {"batch_size": self.batch_size}
         self.clamp = clamp
 
     def evaluate(self, candidates: List[str], **kwargs) -> List[float]:
@@ -54,6 +60,6 @@ class RewardModel(Reward):
 
         """
         return [
-            clamp_logit(sent["score"],self.clamp) 
-            for sent in self.sentiment_pipe(candidates, **self.sent_kwargs) 
+            clamp_logit(sent["score"], self.clamp)
+            for sent in self.model(candidates, **self.kwargs)
         ]

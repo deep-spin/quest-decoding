@@ -16,6 +16,7 @@ class VLLM(LanguageModel):
         max_new_tokens=600,
         max_prompt_length=300,
         stop_tokens=[],  # ["\n"],
+        temperature=1.0,
         **llm_kwargs
     ):
         super().__init__(
@@ -34,6 +35,7 @@ class VLLM(LanguageModel):
             model_path, padding_side="left"
         )
 
+        self.temperature=temperature
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = (
                 self.tokenizer.bos_token_id
@@ -65,7 +67,7 @@ class VLLM(LanguageModel):
             skip_special_tokens=True,
         )
         
-    def continuation(self, prompt, prefix=None, temperature=1.0):
+    def continuation(self, prompt, prefix=None):
 
         if prefix is None:
             input_data = prompt
@@ -73,7 +75,7 @@ class VLLM(LanguageModel):
             input_data = [x[0] + x[1] for x in zip(prompt, prefix)]
 
         sampling_params = SamplingParams(
-            temperature=temperature,
+            temperature=self.temperature,
             logprobs=0,
             max_tokens=self.max_new_tokens,
             stop=self.stop_tokens,
@@ -95,7 +97,7 @@ class VLLM(LanguageModel):
 
         return completion, scores
 
-    def evaluate_continuation(self, prompt, completion_text, temperature=1.0):
+    def evaluate_continuation(self, prompt, completion_text):
 
         input_ids = []
         completion_ids = []
@@ -124,7 +126,7 @@ class VLLM(LanguageModel):
             logprobs=0,
             prompt_logprobs=0,
             max_tokens=1,
-            temperature=temperature,
+            temperature=self.temperature,
         )
 
         outputs = self.model.generate(
