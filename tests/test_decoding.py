@@ -3,6 +3,7 @@ from quest.model.vllm import VLLM
 from quest.decoding import Quest, QuestRLHF
 from quest.reward.base import Reward
 from quest.index import Uniform
+from quest.reward.model import RewardModel
 
 import os
 
@@ -62,7 +63,9 @@ def integrated_test():
         download_dir=os.environ["HF_HOME"],
     )
 
-    reward = LengthReward() 
+    reward = RewardModel(
+        "lvwerra/distilbert-imdb"
+    ) 
     
     index = Uniform()
     

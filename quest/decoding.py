@@ -10,11 +10,8 @@ from tqdm import tqdm
 from quest.index import IndexDistribution
 from quest.model.base import LanguageModel
 from quest.reward.base import Reward
-from quest.utils import join_accepted_values
-#from utils.generate import encode_starting_root
-#from utils.perf import timing
+from quest.utils.list import join_accepted_values
 
-#os.environ["WANDB_SILENT"] = "true"
 
 
 class Quest:

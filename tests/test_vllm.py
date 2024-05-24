@@ -27,7 +27,6 @@ def integrated_test():
 
     y1, scores1 = model.continuation(prompt)
     
-    import pdb; pdb.set_trace()
     
     prefix = [ y_i[:4] for y_i in y1]
 

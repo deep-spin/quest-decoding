@@ -1,6 +1,6 @@
 
-from model.vllm import VLLM
-from decoding import Quest, QuestRLHF
-from reward.base import Reward
-from index import Uniform
+from quest.model.vllm import VLLM
+from quest.decoding import Quest, QuestRLHF
+from quest.reward.base import Reward
+from quest.index import Uniform
 
