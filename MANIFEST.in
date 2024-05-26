@@ -1,0 +1,17 @@
+
+include README.md
+include LICENSE
+include requirements.txt
+include setup.py
+
+# Include all files in the package directory
+recursive-include quest *.py
+recursive-include quest *.txt
+recursive-include quest *.md
+
+# Include test files
+recursive-include tests *.py
+
+
+
+

@@ -8,7 +8,7 @@ with open("requirements.txt", "r") as fr:
 
 setuptools.setup(
     name="quest-decoding",
-    version="1.0.0",
+    version="1.0.2",
     author="Goncalo Faria, Sweta Agrawal.",
     author_email="goncalofaria.research@gmail.com, swetaagrawal20@gmail.com",
     description="A package for sampling from intractable distributions with LLMs.",
@@ -18,4 +18,9 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=installation_requirements,
     python_requires=">=3.10.13",
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ],
 )

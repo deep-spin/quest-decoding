@@ -4,3 +4,4 @@ transformers
 vllm
 scipy
 unbabel-comet
+flash-attn 

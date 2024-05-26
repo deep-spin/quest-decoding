@@ -35,7 +35,7 @@ pip install git+https://github.com/deep-spin/quest-decoding.git
 
 
 <details open>
-<summary>Length Reward</summary>
+<summary> Sentiment Steering </summary>
 
 
 ```python
