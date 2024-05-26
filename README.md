@@ -1,7 +1,3 @@
-![Quest Logo](logo.png)
-
---------------------------------------------------------------------------------
-
 # QUEST: Quality-Aware Metropolis-Hastings Sampling for Machine Translation
 
 Gonçalo Faria, Sweta Agrawal, António Farinhas, Ricardo Rei, José G. C. de Souza, Andre Martins
@@ -33,7 +29,7 @@ pip install quest-decoding
 
 Install using pip (from github):
 ```bash
-pip install git+https://github.com/deepspin/quest-decoding.git
+pip install git+https://github.com/deep-spin/quest-decoding.git
 ```
 </details>
 
