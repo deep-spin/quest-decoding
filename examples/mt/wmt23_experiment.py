@@ -53,7 +53,6 @@ llms = {
 
 
 def generate(
-    batch_size: int = 512,
     gpu_memory_utilization=0.6,
     llm: str = "alma",
     beta: float = 0.1,
@@ -83,6 +82,7 @@ def generate(
         download_dir=os.environ["HF_HOME"],
         gpu_memory_utilization=gpu_memory_utilization,
         tensor_parallel_size=device_count,
+        temperature=temperature,
     )
 
     reward = QEModel(
@@ -96,7 +96,6 @@ def generate(
         model=model,
         reward=reward,
         beta=beta,
-        batch_size=batch_size,
     ).run(steps=steps, use_tqdm=True)
 
     return output.samples
@@ -108,12 +107,12 @@ def main(
     steps: int = 50,
     llm: str = "alma",
     language_pair: str = "de-en",
-    batch_size: int = 8,
     reward_model_checkpoint: str = "Unbabel/wmt23-cometkiwi-da-xl",
     seed: int = 0,
     gpu_memory_utilization=0.6,
     reward_batch_size=8,
     device_count=1,
+    output_file_name="outputs.json",
 ):
     np.random.seed(seed)
 
@@ -128,18 +127,14 @@ def main(
 
     samples = generate(
         device_count=device_count,
-        batch_size=batch_size,
         gpu_memory_utilization=gpu_memory_utilization,
         reward_batch_size=reward_batch_size,
         **method_kwargs,
     )
 
-    path = f"quest_outputs_{steps}_{llm}_{language_pair}_{temperature}_{beta}.json"
     # Write to device a json with device id
-    with open(path, "w") as f:
+    with open(output_file_name, "w") as f:
         json.dump(samples, f)
-
-    return path
 
 
 if __name__ == "__main__":

@@ -42,7 +42,7 @@ pip install git+https://github.com/deep-spin/quest-decoding.git
 
     from langchain.prompts import PromptTemplate
     from quest import RewardModel
-    from quest import VLLM, Uniform
+    from quest import VLLM
 
 
     template =  PromptTemplate.from_template(

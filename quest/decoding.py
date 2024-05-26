@@ -98,7 +98,6 @@ class Quest:
         beta: float = 0.1,
         avoid_redundancy: bool = True,
         logratio_clamp: float = 20,
-        batch_size: int = 512,
     ):
         """
         Initializes the Quest class.
