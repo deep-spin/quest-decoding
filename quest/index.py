@@ -4,6 +4,7 @@ from numpy.random import randint
 
 import math
 
+
 class IndexDistribution:
     """
     Represents a distribution of indices.
@@ -56,7 +57,8 @@ class IndexDistribution:
         while truncation is not None and index > truncation:
             index = self.dist.rvs()
         return index
-    
+
+
 class Uniform(IndexDistribution):
     def __init__(self, **kwargs):
         super().__init__(None, **kwargs)
@@ -70,3 +72,20 @@ class Uniform(IndexDistribution):
 
         return -math.log(normalization)
 
+
+class Constant(IndexDistribution):
+    def __init__(self, value, **kwargs):
+        super().__init__(None, **kwargs)
+        self.value = value
+
+    def sample(self, truncation):
+        return self.value
+
+    def log_prob(self, index, truncation):
+
+        return 0
+
+
+class Zero(Constant):
+    def __init__(self, **kwargs):
+        super().__init__(0, **kwargs)

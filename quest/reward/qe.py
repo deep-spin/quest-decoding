@@ -30,7 +30,9 @@ class QEModel(Reward):
     def set_sources(self, sources: List[str]):
         self.sources = sources
 
-    def evaluate(self, candidates: List[str], **kwargs) -> List[float]:
+    def evaluate(
+        self, candidates: List[str], accepted_indices=None, **kwargs
+    ) -> List[float]:
         """
         Evaluates a list of candidate sequences and returns a list of reward values.
 
@@ -41,11 +43,14 @@ class QEModel(Reward):
             List[float]: The list of reward values for each candidate sequence.
 
         """
+        if accepted_indices is None:
+            accepted_indices = list(range(len(candidates)))
+
         assert (
             self.sources is not None
         ), "Please set sources before evaluating candidates."
 
-        data = [{"src": src, "mt": hyp} for src, hyp in zip(self.sources, candidates)]
+        data = [{"src": self.sources[i], "mt": candidates[i]} for i in accepted_indices]
 
         return [
             clamp_logit(score, self.clamp)

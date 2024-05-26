@@ -31,6 +31,10 @@ Install using pip (recommended):
 pip install quest-decoding
 ```
 
+Install using pip (from github):
+```bash
+pip install git+https://github.com/deepspin/quest-decoding.git
+```
 </details>
 
 
@@ -41,34 +45,29 @@ pip install quest-decoding
 ```python
 
     from langchain.prompts import PromptTemplate
+    from quest import RewardModel
     from quest import VLLM, Uniform
 
 
     template =  PromptTemplate.from_template(
-        "Translate this from {source_language} to {target_language}:\n{source_language}: {source_sentence}\n{target_language}:"
-    ) # a prompt template you define.
+        "I received the following comment on a X: {tweet}. How should I respond?:\n"
+    ) # a prompt template you define - usefull for tasks like translation. 
     
     test_input_data = [{
-        "source_language": "English",
-        "target_language": "French",
-        "source_sentence": "Hello, how are you?"
+        "tweet": "You should refrain from commenting on this matter."
     }]
 
     model = VLLM(
         model_path="haoranxu/ALMA-7B",
         prompt_template=template,
-        download_dir=os.environ["HF_HOME"],
     )
 
-    reward = LengthReward() # a reward you define.
-    
-    index = Uniform()
+    reward = RewardModel("lvwerra/distilbert-imdb")  # sentiment model from HF. 
     
     chain = Quest(
         input_data=test_input_data,
         model=model,
         reward=reward,
-        dist=index,   
     )
     
     chain_outputs = chain.run(
