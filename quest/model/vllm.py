@@ -2,16 +2,15 @@ from quest.model.base import LanguageModel
 from langchain.prompts import PromptTemplate
 import numpy as np
 from langchain.prompts import PromptTemplate
-from transformers import  AutoTokenizer
+from transformers import AutoTokenizer
 
 from vllm import LLM, SamplingParams
-
 
 
 class VLLM(LanguageModel):
     def __init__(
         self,
-        model_path:str,
+        model_path: str,
         prompt_template: PromptTemplate,
         max_new_tokens=600,
         max_prompt_length=300,
@@ -19,23 +18,16 @@ class VLLM(LanguageModel):
         temperature=1.0,
         **llm_kwargs
     ):
-        super().__init__(
-           prompt_template 
-        )
+        super().__init__(prompt_template)
 
-        self.model = LLM(
-            model=model_path,
-            **llm_kwargs
-        )
-        self.max_new_tokens=max_new_tokens
-        self.max_prompt_length=max_prompt_length
+        self.model = LLM(model=model_path, **llm_kwargs)
+        self.max_new_tokens = max_new_tokens
+        self.max_prompt_length = max_prompt_length
         self.stop_tokens = stop_tokens
-        
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_path, padding_side="left"
-        )
 
-        self.temperature=temperature
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path, padding_side="left")
+
+        self.temperature = temperature
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = (
                 self.tokenizer.bos_token_id
@@ -45,28 +37,31 @@ class VLLM(LanguageModel):
     def encode(self, input_data):
 
         tokenized_data = self.tokenize(
-                [self.get_prompt(**data) for data in input_data],
-                #max_length=self.max_prompt_length,
-                #truncation=True,
-            )#.input_ids
+            [self.get_prompt(**data) for data in input_data],
+            # max_length=self.max_prompt_length,
+            # truncation=True,
+        )  # .input_ids
 
         return tokenized_data
 
     def tokenize(self, prompt):
-        
-        return [ self.tokenizer.encode(
-            p,
-            max_length=self.max_prompt_length,
-            truncation=True,
-            #return_tensors="np",q
-        ) for p in prompt ]
-        
+
+        return [
+            self.tokenizer.encode(
+                p,
+                max_length=self.max_prompt_length,
+                truncation=True,
+                # return_tensors="np",q
+            )
+            for p in prompt
+        ]
+
     def decode_tokenize(self, ids):
         return self.tokenizer.batch_decode(
             ids,
             skip_special_tokens=True,
         )
-        
+
     def continuation(self, prompt, prefix=None):
 
         if prefix is None:
@@ -88,10 +83,9 @@ class VLLM(LanguageModel):
             use_tqdm=False,
         )
 
-
         completion = [out.outputs[0].token_ids for out in outputs]
         scores = [
-            [lxi[xi] for xi, lxi in zip(compl, out.outputs[0].logprobs)]
+            [(lxi[xi]) for xi, lxi in zip(compl, out.outputs[0].logprobs)]
             for compl, out in zip(completion, outputs)
         ]
 
@@ -136,7 +130,7 @@ class VLLM(LanguageModel):
         )
 
         scores = [
-            [lxi[xi] for xi, lxi in zip(compl[1:], out.prompt_logprobs[1:])][n - 1 :]
+            [(lxi[xi]) for xi, lxi in zip(compl[1:], out.prompt_logprobs[1:])][n - 1 :]
             for compl, out, n in zip(input_ids, outputs, ns)
         ]
 

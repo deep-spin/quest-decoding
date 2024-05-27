@@ -21,26 +21,9 @@ class IndexDistribution:
 
     """
 
-    def __init__(self, dist):
-        self.dist = dist
-
     def log_prob(self, index, truncation=None):
-        """
-        Calculates the logarithm of the probability of an index.
 
-        Args:
-            index: The index for which to calculate the probability.
-            truncation: An optional truncation value.
-
-        Returns:
-            The logarithm of the probability of the index.
-
-        """
-        if truncation is not None:
-            normalization = self.dist.cdf(truncation)
-        else:
-            normalization = 1
-        return math.log(self.dist.pmf(index) / normalization)
+        raise NotImplementedError
 
     def sample(self, truncation=None):
         """
@@ -53,36 +36,28 @@ class IndexDistribution:
             A random sample from the distribution.
 
         """
-        index = self.dist.rvs()
-        while truncation is not None and index > truncation:
-            index = self.dist.rvs()
-        return index
+        raise NotImplementedError
 
 
 class Uniform(IndexDistribution):
-    def __init__(self, **kwargs):
-        super().__init__(None, **kwargs)
-        # self.mu = mu
 
     def sample(self, truncation):
         return randint(0, truncation)
 
-    def log_prob(self, index, truncation):
+    def log_prob(self, index, truncation) -> float:
         normalization = truncation
 
         return -math.log(normalization)
 
 
 class Constant(IndexDistribution):
-    def __init__(self, value, **kwargs):
-        super().__init__(None, **kwargs)
+    def __init__(self, value):
         self.value = value
 
     def sample(self, truncation):
         return self.value
 
     def log_prob(self, index, truncation):
-
         return 0
 
 
