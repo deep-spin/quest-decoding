@@ -14,7 +14,7 @@ setuptools.setup(
     description="A package for sampling from intractable distributions with LLMs.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/goncalo-faria/quest-decoding",
+    url="https://github.com/deep-spin/quest-decoding",
     packages=setuptools.find_packages(),
     install_requires=installation_requirements,
     python_requires=">=3.10.0",

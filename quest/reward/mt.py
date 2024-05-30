@@ -4,16 +4,14 @@ from comet import download_model, load_from_checkpoint
 from typing import List
 import os
 
-
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
-class QEModel(Reward):
-    # translation quality estimation
+class CometModel(Reward):
 
     def __init__(
         self,
-        model_path="Unbabel/wmt23-cometkiwi-da-xl",
+        model_path="Unbabel/XCOMET-XL",
         batch_size: int = 32,
         device_count=1,
         clamp: float = 1e-3,
@@ -26,9 +24,22 @@ class QEModel(Reward):
         self.device_count = device_count
         self.clamp = clamp
         self.sources = None
+        self.references = None
 
     def set_sources(self, sources: List[str]):
         self.sources = sources
+
+    def set_references(self, references: List[str]):
+        self.references = references
+
+    def make_input(self, candidates: List[str], accepted_indices: List[int]):
+
+        data = [
+            {"src": self.sources[i], "mt": candidates[i], "ref": self.references[i]}
+            for i in accepted_indices
+        ]
+
+        return data
 
     def evaluate(
         self, candidates: List[str], accepted_indices=None, **kwargs
@@ -43,14 +54,11 @@ class QEModel(Reward):
             List[float]: The list of reward values for each candidate sequence.
 
         """
+
         if accepted_indices is None:
             accepted_indices = list(range(len(candidates)))
 
-        assert (
-            self.sources is not None
-        ), "Please set sources before evaluating candidates."
-
-        data = [{"src": self.sources[i], "mt": candidates[i]} for i in accepted_indices]
+        data = self.make_input(candidates, accepted_indices)
 
         return [
             clamp_logit(score, self.clamp)
@@ -58,3 +66,12 @@ class QEModel(Reward):
                 data, batch_size=self.batch_size, gpus=self.device_count
             )["scores"]
         ]
+
+
+class QEModel(CometModel):
+
+    def __init__(self, model_path="Unbabel/wmt23-cometkiwi-da-xl", **kwargs):
+        super().__init__(model_path=model_path, **kwargs)
+
+    def make_input(self, candidates: List[str], accepted_indices: List[int]):
+        return [{"src": self.sources[i], "mt": candidates[i]} for i in accepted_indices]

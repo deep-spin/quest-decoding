@@ -7,14 +7,10 @@ from langchain.prompts import PromptTemplate
 import numpy as np
 import transformers
 from datasets import load_dataset
-
 from quest.decoding import Quest
 
-# from models.tm import ABR_LANGUAGE_MAP
 from quest.model.vllm import VLLM
-from quest.reward.qe import QEModel
-
-# from wmt22_constants import *
+from quest.reward.mt import QEModel
 
 ABR_LANGUAGE_MAP = {
     "pt": "Portuguese",
@@ -27,13 +23,11 @@ ABR_LANGUAGE_MAP = {
     "zh": "Chinese",
 }
 
-
 transformers.logging.set_verbosity_error()
 
 warnings.filterwarnings("ignore")  # Ignore warnings
 
 logging.getLogger().setLevel(logging.ERROR)  # Show only errors in logging
-
 logging.basicConfig(level=logging.ERROR)
 
 llms = {
@@ -52,18 +46,9 @@ llms = {
 }
 
 
-def generate(
-    gpu_memory_utilization=0.6,
-    llm: str = "alma",
-    beta: float = 0.1,
-    temperature: float = 0.8,
-    reward_model_checkpoint="Unbabel/wmt23-cometkiwi-da-xl",
-    steps: int = 50,
-    reward_batch_size: int = 8,
-    device_count: int = 1,
-    language_pair="en-de",
+def load_wmt23_data(
+    language_pair: str = "en-de",
 ):
-
     src_lang, tgt_lang = language_pair.split("-")
     data = load_dataset("haoranxu/WMT23-Test", language_pair, split="test")
     input_data = [
@@ -76,6 +61,23 @@ def generate(
         for sample in data
     ]
 
+    return input_data
+
+
+def generate(
+    llm: str = "alma",
+    beta: float = 0.1,
+    temperature: float = 0.8,
+    reward_model_checkpoint="Unbabel/wmt23-cometkiwi-da-xl",
+    steps: int = 50,
+    language_pair="en-de",
+    reward_batch_size: int = 8,
+    device_count: int = 1,
+    gpu_memory_utilization=0.6,
+):
+
+    input_data = load_wmt23_data(language_pair)
+
     model = VLLM(
         model_path=llms[llm]["path"],
         prompt_template=llms[llm]["prompt"],
@@ -86,10 +88,13 @@ def generate(
     )
 
     reward = QEModel(
-        reward_model_checkpoint, batch_size=reward_batch_size, device_count=device_count
-    )  # sentiment model.
+        model_path=reward_model_checkpoint,
+        batch_size=reward_batch_size,
+        device_count=device_count,
+    )
 
-    reward.set_sources([sample["source_sentence"] for sample in input_data])
+    sources = [sample["source_sentence"] for sample in input_data]
+    reward.set_sources(sources)
 
     output = Quest(
         input_data=input_data,
@@ -98,7 +103,10 @@ def generate(
         beta=beta,
     ).run(steps=steps, use_tqdm=True)
 
-    return output.samples
+    return [
+        {"outputs": outputs, "source": src}
+        for outputs, src in zip(output.samples, sources)
+    ]
 
 
 def main(

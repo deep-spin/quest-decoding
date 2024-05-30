@@ -1,7 +1,7 @@
 
 
 
-export STEPS=128
+export STEPS=8
 export TEMPERATURE=0.8
 
 for BETA in 0.05 0.1 0.5 1

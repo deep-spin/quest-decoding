@@ -2,7 +2,7 @@ from langchain.prompts import PromptTemplate
 from quest.model.vllm import VLLM
 from quest.decoding import Quest
 from quest.index import Uniform
-from quest.reward.qe import QEModel
+from quest.reward.mt import QEModel
 import os
 
 

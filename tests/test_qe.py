@@ -1,4 +1,4 @@
-from quest.reward.qe import QEModel
+from quest.reward.mt import QEModel
 
 
 def integrated_test():
