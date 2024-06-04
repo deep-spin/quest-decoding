@@ -2,7 +2,7 @@
 
 Gonçalo Faria, Sweta Agrawal, António Farinhas, Ricardo Rei, José G. C. de Souza, Andre Martins
 
-**Paper**: arxiv link goes here
+**Paper**: https://arxiv.org/abs/2406.00049
 
 **TL;DR:** This paper presents a method to generate diverse and high-quality machine translations by sampling from a Gibbs distribution using the Metropolis-Hastings algorithm.
 
@@ -90,12 +90,12 @@ professional support requests please send an [e-mail](mailto:goncalofaria.resear
 ## <div align="center">Citation</div>
 
 ````
-@inproceedings{
-    questdecoding,
-    title={QUEST: Quality-Aware Metropolis-Hastings Sampling for Machine Translation},
-    author={Gonçalo Faria, Sweta Agrawal, António Farinhas, Ricardo Rei, José G. C. de Souza, Andre Martins},
-    booktitle={},
-    year={2024},
-    url={arxiv link goes here}
+@misc{faria2024quest,
+      title={QUEST: Quality-Aware Metropolis-Hastings Sampling for Machine Translation}, 
+      author={Gonçalo R. A. Faria and Sweta Agrawal and António Farinhas and Ricardo Rei and José G. C. de Souza and André F. T. Martins},
+      year={2024},
+      eprint={2406.00049},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
 }
 ````
