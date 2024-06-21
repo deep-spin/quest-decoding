@@ -70,7 +70,7 @@ class CometModel(Reward):
 
 class QEModel(CometModel):
 
-    def __init__(self, model_path="Unbabel/wmt23-cometkiwi-da-xl", **kwargs):
+    def __init__(self, model_path="Unbabel/wmt22-cometkiwi-da", **kwargs):
         super().__init__(model_path=model_path, **kwargs)
 
     def make_input(self, candidates: List[str], accepted_indices: List[int]):

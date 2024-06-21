@@ -7,11 +7,13 @@ from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 
 
+DEFAULT_TEMPLATE = PromptTemplate.from_template("{prompt}")
+
 class VLLM(LanguageModel):
     def __init__(
         self,
         model_path: str,
-        prompt_template: PromptTemplate,
+        prompt_template: PromptTemplate=DEFAULT_TEMPLATE,
         max_new_tokens=600,
         max_prompt_length=300,
         stop_tokens=[],  # ["\n"],
@@ -85,7 +87,7 @@ class VLLM(LanguageModel):
 
         completion = [out.outputs[0].token_ids for out in outputs]
         scores = [
-            [(lxi[xi]) for xi, lxi in zip(compl, out.outputs[0].logprobs)]
+            [(lxi[xi].logprob) for xi, lxi in zip(compl, out.outputs[0].logprobs)]
             for compl, out in zip(completion, outputs)
         ]
 

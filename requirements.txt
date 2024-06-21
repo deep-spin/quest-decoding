@@ -5,3 +5,4 @@ vllm >= 0.2.6
 scipy >= 1.9.3
 unbabel-comet #== 2.2.0
 # flash-attn >= 2.4.2
+torchmetrics==0.10.3

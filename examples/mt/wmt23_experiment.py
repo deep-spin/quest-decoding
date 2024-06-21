@@ -81,7 +81,7 @@ def generate(
     model = VLLM(
         model_path=llms[llm]["path"],
         prompt_template=llms[llm]["prompt"],
-        download_dir=os.environ["HF_HOME"],
+        download_dir=os.environ.get("HF_HOME", "/tmp/")
         gpu_memory_utilization=gpu_memory_utilization,
         tensor_parallel_size=device_count,
         temperature=temperature,

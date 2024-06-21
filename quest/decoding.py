@@ -260,7 +260,7 @@ class Quest:
         proposal_length = list(map(len, proposal_state.completion))
 
         # Calculate the log likelihood ratios for the indices
-        index_log_likelihood_backward = np.array(
+        index_log_likelihood_forward = np.array(
             [
                 self.dist.log_prob(
                     index=index,
@@ -273,7 +273,7 @@ class Quest:
             ]
         )
 
-        index_log_likelihood_forward = np.array(
+        index_log_likelihood_backward = np.array(
             [
                 self.dist.log_prob(
                     index=index,
@@ -586,7 +586,7 @@ class QuestRLHF(Quest):
         previous_length = list(map(len, previous_state.completion))
         proposal_length = list(map(len, proposal_state.completion))
 
-        index_log_likelihood_backward = np.array(
+        index_log_likelihood_forward = np.array(
             [
                 self.dist.log_prob(
                     index=index,
@@ -599,7 +599,7 @@ class QuestRLHF(Quest):
             ]
         )
 
-        index_log_likelihood_forward = np.array(
+        index_log_likelihood_backward = np.array(
             [
                 self.dist.log_prob(
                     index=index,
@@ -633,5 +633,14 @@ class QuestRLHF(Quest):
 
 
 class QuestMetropolis(Quest):
+    ## TODO: is implementation is clean but is really not efficient make this parallel.
+    
     def __init__(self, **quest_kwargs):
-        super().__init__(index=Zero(), **quest_kwargs)
+        super().__init__(dist=Zero(), **quest_kwargs)
+
+
+class QuestMetropolisRLHF(QuestRLHF):
+    ## TODO: is implementation is clean but is really not efficient make this parallel.
+    
+    def __init__(self, **quest_kwargs):
+        super().__init__(dist=Zero(), **quest_kwargs)

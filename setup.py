@@ -17,7 +17,7 @@ setuptools.setup(
     url="https://github.com/deep-spin/quest-decoding",
     packages=setuptools.find_packages(),
     install_requires=installation_requirements,
-    python_requires=">=3.10.0",
+    python_requires=">=3.8.0",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
