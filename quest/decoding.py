@@ -45,8 +45,8 @@ class Quest:
             """
             return {
                 "reward": self.reward,
-                "transition_scores": self.transition_scores,
-                "completion": self.completion,
+                #"transition_scores": self.transition_scores,
+                #"completion": self.completion,
                 "text": self.text,
                 "t": self.t,
                 "index": self.index,
@@ -184,7 +184,7 @@ class Quest:
             index=[0] * len(completions),
         )
 
-        self.stack(state)
+        self.stack(state, len(reward)*[1] ,len(reward)*[1.0] )
 
         return state
 
@@ -231,7 +231,7 @@ class Quest:
         for i, t in enumerate(state.text):
             self.samples[i].append(t)
 
-        self.stack(state)
+        self.stack(state, len(reward)*[1], len(reward)*[1.0] )
 
         return state
 
@@ -421,11 +421,14 @@ class Quest:
             alpha,
         )
 
-    def stack(self, state: State):
+    def stack(self, state: State, accept: List[bool], alpha: List[float]):
+        
         self.state_path.append(
             {
                 **state.to_json(),
                 "sample_counts": [len(s) for s in self.samples],
+                "accept": accept,
+                "criterion": alpha,
             }
         )
 
@@ -567,7 +570,7 @@ class Quest:
             for index, chain in enumerate(chains_notchange):
                 self.rejected_indices[chain].append(rejected_indices_toadd[index])
 
-            self.stack(prev_state)
+            self.stack(prev_state,accept.tolist(),A.tolist())
 
         return Quest.Output(
             samples=self.samples,

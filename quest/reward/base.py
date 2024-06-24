@@ -12,6 +12,12 @@ class Reward:
         evaluate: Evaluates the reward for a list of candidates.
 
     """
+    
+    def __init__(self,name:str):
+        self.name = name
+        
+    def get_name(self)->str:
+        return self.name.replace("/","-")
 
     def evaluate(self, candidates:List[str], accepted_indices:List[int],**kwargs)->List[float]:
         """
@@ -53,6 +59,7 @@ class ConstantReward(Reward):
 
         """
         self.reward = reward
+        super().__init__(f"constant:{self.reward}")
 
     def evaluate(self, candidates:List[str], accepted_indices:List[int],**kwargs)->List[float]:
         """
@@ -73,7 +80,8 @@ class ConstantReward(Reward):
         
         return [self.reward for _ in accepted_indices]
 
-
+    def set_context(self, *args,**kwargs):
+        pass
 
 class BackwardReward(Reward):
     """
@@ -96,6 +104,7 @@ class BackwardReward(Reward):
 
         """
         self.model = model
+        super().__init__(f"b:{self.model.get_name()}")
 
     def evaluate(self, candidates:List[str],**kwargs)->List[float]:
         """

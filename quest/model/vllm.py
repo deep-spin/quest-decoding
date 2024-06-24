@@ -5,7 +5,7 @@ from langchain.prompts import PromptTemplate
 from transformers import AutoTokenizer
 
 from vllm import LLM, SamplingParams
-
+from quest.utils.list import flatten_list, unflatten_list
 
 DEFAULT_TEMPLATE = PromptTemplate.from_template("{prompt}")
 
@@ -137,3 +137,45 @@ class VLLM(LanguageModel):
         ]
 
         return completion_ids, scores
+
+    def ancestral(
+        self,
+        input_data,
+        temperature=1.0,
+        top_p=1.0,
+        min_p=0.0,
+        use_beam_search=False,
+        best_of=None,
+        n=1,
+    ):
+
+        
+        prompt_txt = flatten_list(
+            [[self.get_prompt(**data)] * n for data in input_data]
+        )
+
+        sampling_params = SamplingParams(
+            temperature=temperature,
+            n=1,
+            top_p=top_p,
+            min_p=min_p,
+            best_of=best_of,
+            use_beam_search=use_beam_search,
+            max_tokens=self.max_new_tokens,
+            stop=self.stop_tokens,
+            include_stop_str_in_output=False,
+        )
+
+        responses = self.model.generate(prompt_txt, sampling_params)
+
+        completions = []
+        for out in responses:
+            out_inst = []
+            for i in range(len(out.outputs)):
+                out_inst.append(out.outputs[i].text.rstrip("\n"))
+            completions.extend(out_inst)
+
+        completions = unflatten_list(completions, [n] * len(input_data))
+
+        return completions
+     

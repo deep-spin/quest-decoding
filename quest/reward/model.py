@@ -4,12 +4,16 @@ from quest.reward.base import Reward
 from transformers import pipeline
 from quest.utils.logger import fix_loggers
 from quest.utils.math import clamp_logit
-
+from quest.utils.data import get_loader
+import numpy as np 
+from tqdm import tqdm
 # Ignore specific UserWarning from transformers library
 # Configure the transformers logger
 
 fix_loggers(name="transformers")
 
+import torch
+from torch.utils.data import Dataset, DataLoader
 
 class RewardModel(Reward):
     
@@ -40,22 +44,34 @@ class RewardModel(Reward):
         batch_size: int = 32,
         device: int = 0,
         task: str = "text-classification",
-        clamp: float = 1e-2,
+        clamp: float = 20,
     ):
-        super().__init__()
+        
+        super().__init__(f"rm:{model_path}")
+        
 
         self.batch_size = batch_size
         self.device = device
         self.model = pipeline(task, model=model_path, device=device)
         self.kwargs = {"batch_size": self.batch_size}
         self.clamp = clamp
+        
+        from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-    def evaluate(self, candidates: List[str],  accepted_indices:List[int],**kwargs) -> List[float]:
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+        self.model = AutoModelForSequenceClassification.from_pretrained(model_path)
+        self.device = torch.device(f"cuda:{self.device}" if torch.cuda.is_available() else "cpu")
+        self.model.to(self.device)
+        self.model.eval()
+
+    def evaluate(self, candidates: List[str], accepted_indices: List[int]=None, use_tqdm=False, **kwargs) -> List[float]:
         """
         Evaluates a list of candidate sequences and returns a list of reward values.
 
         Args:
             candidates (List[str]): The list of candidate sequences to evaluate.
+            accepted_indices (List[int]): The list of indices of accepted candidates.
+            batch_size (int, optional): The batch size for inference. Defaults to 32.
 
         Returns:
             List[float]: The list of reward values for each candidate sequence.
@@ -67,14 +83,27 @@ class RewardModel(Reward):
             
         candidates = [candidates[i] for i in accepted_indices]
         
-        #print(
-        #    [sent["score"] for sent in self.model(candidates, **self.kwargs)]
-        #)
+
+        loader = get_loader(
+            candidates,
+            self.tokenizer,
+            use_tqdm=use_tqdm,
+            batch_size=self.batch_size
+        )
         
-        return [
-            clamp_logit(sent["score"], self.clamp)
-            for sent in self.model(candidates, **self.kwargs)
-        ]
+        rewards = []
+
+        with torch.no_grad():
+            for batch in loader:
+                input_ids = batch['input_ids'].to(self.device)
+                attention_mask = batch['attention_mask'].to(self.device)
+
+                outputs =self.model(input_ids=input_ids, attention_mask=attention_mask)
+                logits = np.clip(outputs.logits[:,0].cpu().numpy(), -self.clamp, self.clamp).tolist()
+
+                rewards.extend(logits)
+                
+        return rewards
 
 
 
@@ -106,6 +135,7 @@ class ContextualRewardModel(RewardModel):
         **rm_kwargs
     ):
         super().__init__(**rm_kwargs)
+        self.name="c"+self.name
         self.prompt_txt = None
 
 
