@@ -1,4 +1,6 @@
 from langchain.prompts import PromptTemplate
+from transformers import AutoTokenizer
+
 
 class LanguageModel:
     """
@@ -11,8 +13,15 @@ class LanguageModel:
         prompt_template (PromptTemplate): The template used to generate prompts.
     """
 
-    def __init__(self, prompt_template: PromptTemplate):
-        self.prompt_template = prompt_template
+    def __init__(
+        self,
+        prompt_template: PromptTemplate,
+        temperature=1.0,
+    ):
+        self.prompt_template = (
+            prompt_template
+        )
+        self.temperature = temperature
 
     def encode(self, prompt_data):
         """
@@ -24,7 +33,10 @@ class LanguageModel:
         Returns:
             The tokenized representation of the prompts.
         """
-        prompt_txt = [self.get_prompt(**data) for data in prompt_data]
+        prompt_txt = [
+            self.get_prompt(**data)
+            for data in prompt_data
+        ]
         return self.tokenize(prompt_txt)
 
     def get_prompt(self, **input_data):
@@ -40,14 +52,21 @@ class LanguageModel:
         input_data = {
             k: v
             for k, v in input_data.items()
-            if k in self.prompt_template.input_variables
+            if k
+            in self.prompt_template.input_variables
         }  # filter out relevant variables.
 
-        prompt = self.prompt_template.format(**input_data)
+        prompt = (
+            self.prompt_template.format(
+                **input_data
+            )
+        )
 
         return prompt
 
-    def continuation(self, x, prefix=None, **kwargs):
+    def continuation(
+        self, x, prefix=None, **kwargs
+    ):
         """
         Generates a continuation given an input sequence.
 
@@ -61,7 +80,11 @@ class LanguageModel:
         """
         raise NotImplementedError()
 
-    def evaluate_continuation(self, x, y, temperature=1.0):
+    def evaluate_continuation(
+        self,
+        x,
+        y,
+    ):
         """
         Evaluates the continuation of an input sequence.
 
@@ -87,7 +110,9 @@ class LanguageModel:
         """
         raise NotImplementedError()
 
-    def decode_tokenize(self, ids):
+    def decode_tokenize(
+        self, ids, skip_special_tokens=False
+    ):
         """
         Decodes and tokenizes the given IDs.
 
@@ -98,5 +123,65 @@ class LanguageModel:
             NotImplementedError: This method should be implemented by subclasses.
         """
         raise NotImplementedError()
-    
-    
+
+
+class LocalLanguageModel(LanguageModel):
+
+    def __init__(
+        self,
+        model_path: str,
+        prompt_template: PromptTemplate,
+        temperature=1.0,
+        max_new_tokens=600,
+        max_prompt_length=300,
+        stop_tokens=[],  # ["\n"],
+        skip_special_tokens=False,
+    ):
+        super().__init__(
+            prompt_template=prompt_template,
+            temperature=temperature,
+        )
+
+        self.max_new_tokens = max_new_tokens
+        self.max_prompt_length = (
+            max_prompt_length
+        )
+        self.stop_tokens = stop_tokens
+        self.skip_special_tokens = (
+            skip_special_tokens
+        )
+        self.tokenizer = (
+            AutoTokenizer.from_pretrained(
+                model_path,
+                padding_side="left",
+            )
+        )
+
+        if (
+            self.tokenizer.pad_token_id
+            is None
+        ):
+            self.tokenizer.pad_token_id = (
+                self.tokenizer.bos_token_id
+            )  # THIS IS ACTUALLY REALLY IMPORTANT :) THIS HIDDEN NIGHTMARE DONT USE EOS. - w/ AR models in batch we may have padding in the beginig - obvious reason left to right gen.
+            self.tokenizer.pad_token = (
+                self.tokenizer.bos_token
+            )
+
+    def tokenize(self, prompt):
+
+        return [
+            self.tokenizer.encode(
+                p,
+                max_length=self.max_prompt_length,
+                truncation=True,
+                # return_tensors="np",q
+            )
+            for p in prompt
+        ]
+
+    def decode_tokenize(self, ids):
+        return self.tokenizer.batch_decode(
+            ids,
+            skip_special_tokens=self.skip_special_tokens,
+        )

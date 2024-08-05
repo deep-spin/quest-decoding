@@ -6,7 +6,7 @@ def integrated_test():
     
     
     rm = RewardModel(
-        "lvwerra/distilbert-imdb"
+       "OpenAssistant/reward-model-deberta-v3-large-v2"
     )
     
     

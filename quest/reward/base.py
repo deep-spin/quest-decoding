@@ -12,14 +12,21 @@ class Reward:
         evaluate: Evaluates the reward for a list of candidates.
 
     """
-    
-    def __init__(self,name:str):
-        self.name = name
-        
-    def get_name(self)->str:
-        return self.name.replace("/","-")
 
-    def evaluate(self, candidates:List[str], accepted_indices:List[int],**kwargs)->List[float]:
+    def __init__(self, name: str):
+        self.name = name
+
+    def get_name(self) -> str:
+        return self.name.replace(
+            "/", "-"
+        ).split(".")[0]
+
+    def evaluate(
+        self,
+        candidates: List[str],
+        accepted_indices: List[int],
+        **kwargs,
+    ) -> List[float]:
         """
         Evaluates the reward for a list of candidates.
 
@@ -37,7 +44,6 @@ class Reward:
         raise NotImplementedError
 
 
-
 class ConstantReward(Reward):
     """
     A class for a constant reward.
@@ -50,7 +56,7 @@ class ConstantReward(Reward):
 
     """
 
-    def __init__(self, reward:float):
+    def __init__(self, reward: float):
         """
         The constructor for ConstantReward class.
 
@@ -59,9 +65,16 @@ class ConstantReward(Reward):
 
         """
         self.reward = reward
-        super().__init__(f"constant:{self.reward}")
+        super().__init__(
+            f"constant:{self.reward}"
+        )
 
-    def evaluate(self, candidates:List[str], accepted_indices:List[int],**kwargs)->List[float]:
+    def evaluate(
+        self,
+        candidates: List[str],
+        accepted_indices: List[int],
+        **kwargs,
+    ) -> List[float]:
         """
         Evaluates the reward for a list of candidates.
 
@@ -73,15 +86,20 @@ class ConstantReward(Reward):
             List[float]: A list of reward values for each candidate.
 
         """
-        
-        if accepted_indices is None:
-            accepted_indices = list(range(len(candidates)))
-        
-        
-        return [self.reward for _ in accepted_indices]
 
-    def set_context(self, *args,**kwargs):
+        if accepted_indices is None:
+            accepted_indices = list(
+                range(len(candidates))
+            )
+
+        return [
+            self.reward
+            for _ in accepted_indices
+        ]
+
+    def set_context(self, *args, **kwargs):
         pass
+
 
 class BackwardReward(Reward):
     """
@@ -95,7 +113,7 @@ class BackwardReward(Reward):
 
     """
 
-    def __init__(self, model:Reward):
+    def __init__(self, model: Reward):
         """
         The constructor for BackwardReward class.
 
@@ -104,9 +122,15 @@ class BackwardReward(Reward):
 
         """
         self.model = model
-        super().__init__(f"b:{self.model.get_name()}")
+        super().__init__(
+            f"b:{self.model.get_name()}"
+        )
 
-    def evaluate(self, candidates:List[str],**kwargs)->List[float]:
+    def evaluate(
+        self,
+        candidates: List[str],
+        **kwargs,
+    ) -> List[float]:
         """
         Evaluates the reward for a list of candidates.
 
@@ -118,6 +142,10 @@ class BackwardReward(Reward):
             List[float]: A list of reward values for each candidate.
 
         """
-        
-        
-        return [ -s for s in self.model.evaluate(candidates, **kwargs)]
+
+        return [
+            -s
+            for s in self.model.evaluate(
+                candidates, **kwargs
+            )
+        ]

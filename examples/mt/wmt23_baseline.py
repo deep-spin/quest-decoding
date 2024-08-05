@@ -91,15 +91,12 @@ def load_wmt_data(
 
 
 def main(
-    beta: float = 0.1,
-    temperature: float = 0.8,
+    temperature: float = 0.9,
     steps: int = 128,
     llm: str = "alma",
-    language_pair: str = "en-cs",
-    reward_model_checkpoint: str = "Unbabel/wmt23-cometkiwi-da-xl",
+    language_pair: str = "de-en",
     seed: int = 0,
-    gpu_memory_utilization=0.6,
-    reward_batch_size=8,
+    gpu_memory_utilization=0.85,
     device_count=1,
     stop_tokens=[],
     max_new_tokens=800,
@@ -111,13 +108,10 @@ def main(
 
     experiment = Exp(
         meta={
-            "beta": beta,
             "steps": steps,
             "temperature": temperature,
             "model_path": llms[llm]["path"],
-            "reward_model_path": reward_model_checkpoint,
-            "variant": "quest",
-            "reward_type": "contextual",
+            "variant": "ancestral",
             "stop_tokens": stop_tokens,
             "index": "uniform",
             "max_new_tokens": max_new_tokens,
@@ -141,13 +135,6 @@ def main(
         max_prompt_length=max_prompt_length,  # 600
         tensor_parallel_size=device_count,
         prompt_template=llms[llm]["prompt"],
-        skip_special_tokens=True,
-    )
-
-    reward = QEModel(
-        model_path=reward_model_checkpoint,
-        batch_size=reward_batch_size,
-        device_count=device_count,
     )
 
     input_data = load_wmt_data(
@@ -162,58 +149,22 @@ def main(
         for x in input_data
     ]
 
-    sources = [
-        sample["source_sentence"]
-        for sample in input_data
-    ]
-    reward.set_sources(sources)
-
-    chain_outputs = Quest(
-        input_data=input_data,
-        proposal=SuffixProposal(
-            model=model
-        ),
-        reward=reward,
-        beta=beta,
-    ).run(steps=steps, use_tqdm=True)
+    completions_txt = model.ancestral(
+        input_data, n=steps
+    )
 
     outputs = []
-    for i in range(len(input_data)):
+    for instance_txt in completions_txt:
         outputs.append(
             [
-                {
-                    "t": s["t"],
-                    **{
-                        k: v[i]
-                        for k, v in s.items()
-                        if k != "t"
-                    },
-                }
-                for s in chain_outputs.state_path
+                {"text": state_t}
+                for state_t in instance_txt
             ]
         )
 
     experiment.add_instances(
         inputs=input_data,
         outputs=outputs,
-    )
-
-    beta = experiment.meta["beta"]
-    eval_key = reward.get_name()
-    instances = experiment.instances
-    scores = [
-        {
-            "scores": [
-                o["reward"] * beta
-                for o in i.outputs
-            ]
-        }
-        for i in instances
-    ]
-
-    experiment.add_eval(
-        eval_key,
-        scores,
     )
 
     experiment.save(save_path)
