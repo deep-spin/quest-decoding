@@ -61,7 +61,7 @@ class VLLM(LocalLanguageModel):
             max_tokens=self.max_new_tokens,
             stop=self.stop_tokens,
             include_stop_str_in_output=True,
-            skip_special_tokens=False,
+            skip_special_tokens=self.skip_special_tokens,
             spaces_between_special_tokens=False,
         )
 
@@ -181,7 +181,7 @@ class VLLM(LocalLanguageModel):
             max_tokens=self.max_new_tokens,
             stop=self.stop_tokens,
             include_stop_str_in_output=True,
-            skip_special_tokens=False,
+            skip_special_tokens=self.skip_special_tokens,
         )
 
         responses = self.model.generate(

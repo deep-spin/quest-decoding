@@ -547,6 +547,12 @@ class Quest:
                 proposal_state=proposal_state,
             )
 
+            self.stack(
+                prev_state,
+                accept.tolist(),
+                A.tolist(),
+            )
+
             if self.avoid_redundancy:
                 prev_state = prev_state.paste_relevant(
                     uncomplete_indices,
@@ -580,11 +586,6 @@ class Quest:
                 self.samples[chain].append(
                     samples_toadd[index]
                 )
-            self.stack(
-                prev_state,
-                accept.tolist(),
-                A.tolist(),
-            )
 
         return Quest.Output(
             samples=self.samples,

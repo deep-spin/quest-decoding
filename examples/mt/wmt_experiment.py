@@ -69,6 +69,7 @@ def load_wmt_data(
         language_pair,
         split="test",
     )
+
     input_data = [
         {
             "reference_sentence": sample[

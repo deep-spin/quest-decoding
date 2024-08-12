@@ -229,7 +229,7 @@ class SuffixProposal(LLMProposal):
         # Calculate the log likelihood ratios for the rewards
         proposal_log_likelihood_backward = np.array(
             [
-                np.sum(scores[index:])
+                np.mean(scores[index:])
                 for scores, index in zip(
                     previous_state.transition_scores,
                     proposal_state.index,
@@ -239,7 +239,7 @@ class SuffixProposal(LLMProposal):
 
         proposal_log_likelihood_forward = np.array(
             [
-                np.sum(scores[index:])
+                np.mean(scores[index:])
                 for scores, index in zip(
                     proposal_state.transition_scores,
                     proposal_state.index,
@@ -339,6 +339,7 @@ class SuffixProposal(LLMProposal):
             transition_scores=proposal_transition_scores,
             text=proposal_text,
             index=indeces,
+            t=previous_state.t + 1,
         )
 
         return proposal_state
@@ -446,7 +447,31 @@ class FancyProposal(LLMProposal):
             for data in input_data
         ]
 
-        return prompt_txt
+        if isinstance(
+            self.transition_prompt, str
+        ):
+
+            fstrings = [
+                PromptTemplate.from_template(
+                    data[
+                        self.transition_prompt
+                    ]
+                )
+                for data in input_data
+            ]
+
+        else:
+
+            fstrings = [
+                self.transition_prompt.partial(
+                    prompt=p
+                )
+                for p in prompt_txt
+            ]
+
+        return (prompt_txt, fstrings)
+
+    #     return prompt_txt
 
     def transition(
         self,
@@ -454,17 +479,21 @@ class FancyProposal(LLMProposal):
         prompt: List[str],
     ):
 
+        prompt, fstrings = prompt
+
         forward_context = [
-            self.transition_prompt.format(
-                prompt=p,
+            fstring.format(
+                # prompt=p,
                 previous_answer=ptext.replace(
                     self.model.tokenizer.eos_token,
                     "",
                 ),
                 next_answer="",
             )
-            for p, ptext in zip(
-                prompt, previous_state.text
+            for fstring, ptext in zip(
+                fstrings,
+                previous_state.text,
+                # self.starting_output,
             )
         ]
 
@@ -494,6 +523,7 @@ class FancyProposal(LLMProposal):
             transition_scores=transition_scores,
             text=proposal_text,
             index=None,
+            t=previous_state.t + 1,
         )
 
         return proposal_state
@@ -506,15 +536,16 @@ class FancyProposal(LLMProposal):
     ):
         ## This has a serious error -> the transition is badlky computed.
 
+        prompt, fstrings = prompt
+
         backward_context = [
-            self.transition_prompt.format(
-                prompt=p,
+            fstring.format(
                 previous_answer=proposal,
                 next_answer="",
             )
-            for proposal, p in zip(
+            for proposal, fstring in zip(
                 proposal_state.text,
-                prompt,
+                fstrings,
             )
         ]
 
@@ -534,7 +565,7 @@ class FancyProposal(LLMProposal):
         log_likelihood_forward = np.array(
             list(
                 map(
-                    np.sum,
+                    np.mean,
                     proposal_state.transition_scores,
                 )
             )
@@ -543,7 +574,7 @@ class FancyProposal(LLMProposal):
         log_likelihood_backward = np.array(
             list(
                 map(
-                    np.sum,
+                    np.mean,
                     backward_transition_scores,
                 )
             )
@@ -561,15 +592,24 @@ class FancyProposal(LLMProposal):
         self, prompt
     ) -> Quest.State:
 
+        prompt, _ = prompt
+
         state = super().draw_initial_state(
             self.model.tokenize(prompt)
         )
+
+        self.starting_output = [
+            o.split(" ")[0]
+            for o in state.text
+        ]
 
         return state
 
     def bootstrap_initial_state(
         self, prompt, samples: List[str]
     ) -> Quest.State:
+
+        prompt, fstrings = prompt
 
         return (
             super().bootstrap_initial_state(

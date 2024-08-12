@@ -252,7 +252,7 @@ class DiversityEval(Evalutor):
         self, metric: CorpusDiversityMetric
     ):
         super().__init__(
-            metric.get_name() + "_repr"
+            metric.get_name() + "-repr"
         )
         self.metric = metric
 
@@ -362,6 +362,8 @@ def main(
             ps_eval.eval_name
         )
     )
+
+    print(setup.map(lambda x: x.name))
 
     setup = setup.safe_map(
         lambda experiment: (
