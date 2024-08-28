@@ -7,11 +7,18 @@ from langchain.prompts import PromptTemplate
 import numpy as np
 import transformers
 from datasets import load_dataset
-from quest import Quest, SuffixProposal
+from quest import (
+    Quest,
+    SuffixProposal,
+    RLHFSuffixProposal,
+)
 from datetime import datetime
 
 from quest.model.vllm import VLLM
 from quest.reward.mt import QEModel
+from quest.reward.base import (
+    ConstantReward,
+)
 
 from expkit import Exp
 import torch
@@ -105,6 +112,7 @@ def main(
     stop_tokens=[],
     max_new_tokens=800,
     max_prompt_length=1200,
+    reward_device=0,
     save_path: str = "mt-outputs/",
     year: str = "23",
 ):
@@ -143,12 +151,17 @@ def main(
         tensor_parallel_size=device_count,
         prompt_template=llms[llm]["prompt"],
         skip_special_tokens=True,
+        device=("cuda:0"),
+        enforce_eager=True,
     )
+
+    # reward = ConstantReward(0.0)
 
     reward = QEModel(
         model_path=reward_model_checkpoint,
         batch_size=reward_batch_size,
-        device_count=device_count,
+        # device_count=device_count,
+        devices=[reward_device],
     )
 
     input_data = load_wmt_data(
@@ -167,6 +180,7 @@ def main(
         sample["source_sentence"]
         for sample in input_data
     ]
+
     reward.set_sources(sources)
 
     chain_outputs = Quest(
@@ -176,6 +190,7 @@ def main(
         ),
         reward=reward,
         beta=beta,
+        avoid_redundancy=False,
     ).run(steps=steps, use_tqdm=True)
 
     outputs = []

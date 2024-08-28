@@ -57,7 +57,7 @@ class VLLM(LocalLanguageModel):
 
         sampling_params = SamplingParams(
             temperature=self.temperature,
-            logprobs=0,
+            logprobs=1,
             max_tokens=self.max_new_tokens,
             stop=self.stop_tokens,
             include_stop_str_in_output=True,
@@ -72,9 +72,10 @@ class VLLM(LocalLanguageModel):
         )
 
         completion = [
-            out.outputs[0].token_ids
+            list(out.outputs[0].token_ids)
             for out in outputs
         ]
+
         scores = [
             [
                 (lxi[xi].logprob)

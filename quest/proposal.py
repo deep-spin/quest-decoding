@@ -60,6 +60,7 @@ class LLMProposal(Quest.Proposal):
                 prefix=None,
             )
         )
+
         # Decode the completion text
         completions_text = (
             self.model.decode_tokenize(
@@ -428,11 +429,11 @@ class FancyProposal(LLMProposal):
 
     def __init__(
         self,
-        transition_prompt=BaseTransitionPrompt,
+        transition_func,
         **kwargs,
     ):
-        self.transition_prompt = (
-            transition_prompt
+        self.transition_func = (
+            transition_func
         )
 
         super().__init__(**kwargs)
@@ -447,27 +448,10 @@ class FancyProposal(LLMProposal):
             for data in input_data
         ]
 
-        if isinstance(
-            self.transition_prompt, str
-        ):
-
-            fstrings = [
-                PromptTemplate.from_template(
-                    data[
-                        self.transition_prompt
-                    ]
-                )
-                for data in input_data
-            ]
-
-        else:
-
-            fstrings = [
-                self.transition_prompt.partial(
-                    prompt=p
-                )
-                for p in prompt_txt
-            ]
+        fstrings = [
+            data["chat_template_prompt"]
+            for data in input_data
+        ]
 
         return (prompt_txt, fstrings)
 
@@ -482,13 +466,14 @@ class FancyProposal(LLMProposal):
         prompt, fstrings = prompt
 
         forward_context = [
-            fstring.format(
-                # prompt=p,
+            self.transition_func(
+                chat_template_prompt=fstring,
                 previous_answer=ptext.replace(
                     self.model.tokenizer.eos_token,
                     "",
                 ),
                 next_answer="",
+                tokenizer=self.model.tokenizer,
             )
             for fstring, ptext in zip(
                 fstrings,
@@ -539,9 +524,11 @@ class FancyProposal(LLMProposal):
         prompt, fstrings = prompt
 
         backward_context = [
-            fstring.format(
+            self.transition_func(
+                chat_template_prompt=fstring,
                 previous_answer=proposal,
                 next_answer="",
+                tokenizer=self.model.tokenizer,
             )
             for proposal, fstring in zip(
                 proposal_state.text,
@@ -579,6 +566,8 @@ class FancyProposal(LLMProposal):
                 )
             )
         )
+
+        ## TODO I should do a log ratio of the LM base generation as well ..
 
         # Calculate the log transition ratio
         log_transition_ratio = (
@@ -631,6 +620,8 @@ class AlwaysAcceptFancyProposal(
         proposal_state: Quest.State,
         prompt: List[str],
     ):
+
+        prompt, fstrings = prompt
 
         return np.zeros(
             (len(prompt),), dtype=np.float32

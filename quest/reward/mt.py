@@ -18,7 +18,7 @@ class CometModel(Reward):
         self,
         model_path="Unbabel/XCOMET-XL",
         batch_size: int = 32,
-        device_count=1,
+        devices=[0],
         clamp: float = 1e-3,
         name="comet",
     ):
@@ -31,7 +31,8 @@ class CometModel(Reward):
             model_path, strict=False
         )
         self.batch_size = batch_size
-        self.device_count = device_count
+        self.device_count = len(devices)
+        self.devices = devices
         self.clamp = clamp
         self.sources = None
         self.references = None
@@ -97,6 +98,7 @@ class CometModel(Reward):
                 data,
                 batch_size=self.batch_size,
                 gpus=self.device_count,
+                devices=self.devices,
             )["scores"]
         ]
 

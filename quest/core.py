@@ -264,11 +264,6 @@ class Quest:
             )
 
             # Compute the reward for the initial completion
-            state.reward = (
-                self.compute_reward(
-                    state.text
-                )
-            )
 
             for i, t in enumerate(
                 state.text
@@ -284,6 +279,8 @@ class Quest:
                 prompt,
                 warm_start,
             )
+
+        # Compute the reward for the initial completion
 
         state.reward = self.compute_reward(
             state.text

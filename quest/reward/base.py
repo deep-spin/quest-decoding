@@ -1,4 +1,5 @@
 from typing import List
+import numpy as np
 
 
 class Reward:
@@ -149,3 +150,52 @@ class BackwardReward(Reward):
                 candidates, **kwargs
             )
         ]
+
+
+class RewardMix(Reward):
+    def __init__(
+        self,
+        rewards: List[Reward],
+        mixing_weights: List[float] = None,
+    ):
+        self.rewards = rewards
+        self.mixing_weights = (
+            mixing_weights
+            if mixing_weights is not None
+            else [1.0] * len(rewards)
+        )
+
+        assert len(self.rewards) == len(
+            self.mixing_weights
+        ), "The number of rewards must match the number of mixing weights."
+
+        super().__init__(
+            f"mix:{','.join([r.get_name() for r in rewards])}"
+        )
+
+    def evaluate(
+        self,
+        candidates: List[str],
+        **kwargs,
+    ) -> List[float]:
+
+        ## TODO THIS SHOULD BE DONE IN PARALLEL !!!!!!!
+        evaluations = [
+            r.evaluate(candidates, **kwargs)
+            for r in self.rewards
+        ]
+
+        return (
+            np.stack(
+                [
+                    np.array(e) * w
+                    for e, w in zip(
+                        evaluations,
+                        self.mixing_weights,
+                    )
+                ],
+                axis=0,
+            )
+            .sum(0)
+            .tolist()
+        )

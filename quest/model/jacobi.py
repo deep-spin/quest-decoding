@@ -4,6 +4,9 @@ from transformers import (
 )
 
 from transformers import (
+    AutoModelForCausalLM,
+)
+from transformers import (
     StoppingCriteria,
     StoppingCriteriaList,
     MaxLengthCriteria,
@@ -31,6 +34,55 @@ DEFAULT_TEMPLATE = (
 )
 
 
+def sample_jacobi(
+    logits,
+    response_length,
+    temperature=1.0,
+    eos_token_id=2,
+):
+    samples = (
+        torch.multinomial(
+            (logits / temperature)
+            .softmax(-1)
+            .reshape(
+                -1,
+                logits.shape[-1],
+            ),
+            num_samples=1,
+        )
+        .reshape(
+            (
+                logits.shape[0],
+                -1,
+            )
+        )
+        .tolist()
+    )
+
+    new_response = []
+    for sample, rn in zip(
+        samples,
+        response_length,
+    ):
+        (eos_indices,) = torch.nonzero(
+            torch.tensor(sample)
+            == eos_token_id,
+            as_tuple=True,
+        )
+
+        eos_indices = eos_indices.tolist()
+        stop = (
+            eos_indices[0]
+            if len(eos_indices) > 0
+            else rn
+        )
+        new_response.append(
+            sample[: stop + 1]
+        )
+
+    return new_response
+
+
 def transition_scores(
     logprobs,
     response,
@@ -50,6 +102,46 @@ def transition_scores(
     ]
 
     return transition_scores
+
+
+def jacobi_joint_probability(
+    prompt_logits,
+    x_logits,
+    x,
+    y,
+    temperature=1.0,
+):
+
+    total_logits = torch.cat(
+        [
+            prompt_logits[:, -1:],
+            x_logits,
+        ],
+        dim=-2,
+    )
+
+    marginal_likelihood = transition_scores(
+        logprobs=log_softmax(
+            total_logits,
+            dim=-1,
+        ),
+        response=x,
+    )
+
+    transition_likelihood = (
+        transition_scores(
+            logprobs=log_softmax(
+                total_logits / temperature,
+                dim=-1,
+            ),
+            response=y,
+        )
+    )
+
+    return (
+        (marginal_likelihood),
+        (transition_likelihood),
+    )
 
 
 class StoppingCriteriaSub(StoppingCriteria):
@@ -129,20 +221,14 @@ class HF(LocalLanguageModel):
         #    self.model
         # )
 
-        self.stop_words_ids = (
-            self.tokenizer.additional_special_tokens_ids
-            + [self.tokenizer.eos_token_id]
-            + [
-                self.tokenizer.encode(
-                    stop_word,
-                    add_prefix_space=False,
-                    add_special_tokens=False,
-                )  # by default the tokenizer is sending spaces. We don't want that
-                for stop_word in (
-                    stop_tokens
-                )  # , "[/INST]", "[INST]"
-            ]
-        )
+        self.stop_words_ids = [
+            self.tokenizer.encode(
+                stop_word,
+                add_prefix_space=False,
+                add_special_tokens=False,
+            )  # by default the tokenizer is sending spaces. We don't want that
+            for stop_word in stop_tokens  # , "[/INST]", "[INST]"
+        ]
 
     @torch.no_grad()
     def test_cache_system(
@@ -150,6 +236,159 @@ class HF(LocalLanguageModel):
     ):
 
         return None
+
+    @torch.no_grad()
+    def jacobi(
+        self,
+        response,
+        prev_logits,
+        prompt_logits,
+        prompt_attention_mask,
+        prompt_key_values,
+    ):
+
+        ## pad logits
+        maxT = max(map(len, prev_logits))
+
+        padded_logits = torch.zeros(
+            (
+                len(prev_logits),
+                maxT,
+                len(prev_logits[0][0]),
+            )
+        )
+        ## fill the values
+        for i, logits in enumerate(
+            prev_logits
+        ):
+            padded_logits[
+                i, : len(logits)
+            ] = torch.tensor(logits)
+
+        prev_logits = padded_logits.to(
+            self.device_map
+        )
+
+        if (
+            prev_logits.shape[1]
+            > self.max_new_tokens - 1
+        ):
+            prev_logits = prev_logits[
+                :,
+                : self.max_new_tokens - 1,
+            ]
+
+            rlength = [
+                min(
+                    len(r),
+                    self.max_new_tokens,
+                )
+                for r in response
+            ]
+
+        else:
+            rlength = [
+                len(r) for r in response
+            ]
+
+        new_response = sample_jacobi(
+            logits=torch.cat(
+                [
+                    prompt_logits[:, :-1],
+                    prev_logits,
+                ],
+                dim=-2,
+            ),
+            response_length=rlength,
+            temperature=self.temperature,
+        )
+
+        (
+            new_response_input_ids,
+            new_response_attention_mask,
+        ) = self.prepare_inputs(
+            new_response,
+            padding_side="right",
+        )
+
+        new_response_extra = [
+            resp
+            + [self.tokenizer.eos_token_id]
+            for resp in new_response
+        ]
+
+        response_extra = [
+            resp
+            + [self.tokenizer.eos_token_id]
+            for resp in response
+        ]
+
+        new_response_outputs = self.model.forward(
+            input_ids=new_response_input_ids,
+            attention_mask=torch.cat(
+                [
+                    prompt_attention_mask,
+                    new_response_attention_mask,
+                ],
+                dim=-1,
+            ),
+            return_dict=True,
+            use_cache=True,
+            past_key_values=prompt_key_values,
+        )
+
+        # logits = new_response_outputs.logits
+        # new_response
+        (
+            prev_lm_likelihood,
+            forward_transition_likelihood,
+        ) = jacobi_joint_probability(
+            prompt_logits=prompt_logits,
+            x_logits=prev_logits,
+            x=response_extra,
+            y=new_response_extra,
+            temperature=self.temperature,
+        )
+
+        (
+            next_lm_likelihood,
+            backward_transition_likelihood,
+        ) = jacobi_joint_probability(
+            prompt_logits=prompt_logits,
+            x_logits=new_response_outputs.logits,
+            x=new_response_extra,
+            y=response_extra,
+            temperature=self.temperature,
+        )
+
+        mapsum = lambda x: list(map(sum, x))
+
+        chopped_logits = [
+            logits_padded[: len(ri)]
+            for ri, logits_padded in zip(
+                new_response,
+                new_response_outputs.logits.cpu().tolist(),
+            )
+        ]
+
+        return (
+            new_response,
+            chopped_logits,
+            {
+                "prev_lm_likelihood": mapsum(
+                    prev_lm_likelihood
+                ),
+                "forward_transition_likelihood": mapsum(
+                    forward_transition_likelihood
+                ),
+                "next_lm_likelihood": mapsum(
+                    next_lm_likelihood,
+                ),
+                "backward_transition_likelihood": mapsum(
+                    backward_transition_likelihood,
+                ),
+            },
+        )
 
     @torch.no_grad()
     def continuation(
@@ -297,13 +536,13 @@ class HF(LocalLanguageModel):
                 dim=1,
             )
 
-            for (
-                stop_word_id
-            ) in self.stop_words_ids:
-                finished_sequences = finished_sequences | (
+            finished_sequences = (
+                finished_sequences
+                | (
                     next_token_id.squeeze()
-                    == stop_word_id
+                    == eos_token_id
                 )
+            )
 
             # Append the next token to the generated sequence
             generated_ids = torch.cat(
@@ -332,16 +571,13 @@ class HF(LocalLanguageModel):
                 outputs.past_key_values
             )
 
-            del outputs
-            torch.cuda.empty_cache()
-
             # Break the loop if all sequences are finished
             if finished_sequences.all():
                 break
 
-        import pdb
+            import pdb
 
-        pdb.set_trace()
+            pdb.set_trace()
 
         # prompt_tokens = generated_ids[:, :T]
         generated_ids = (
@@ -524,7 +760,7 @@ if __name__ == "__main__":
     temperature = 0.001
     # gpu_memory_utilization = 0.8
     model_path = "google/gemma-2-2b-it"  # "allenai/tulu-2-7b"  # "openai-community/gpt2"  #  "allenai/tulu-2-7b"
-    n = 1
+    n = 2
 
     ds = load_dataset(
         dataset_path, split="test"
@@ -541,39 +777,23 @@ if __name__ == "__main__":
         ),
         temperature=temperature,
         dtype=torch.bfloat16,
-        max_new_tokens=200,
+        max_new_tokens=50,
         max_prompt_length=800,
     )
 
     prompt = model.encode(data_iterable)
 
-    import pdb
-
-    pdb.set_trace()
     prompt_kv = model.get_starting_cache(
         prompt
     )
 
     prefix = [
         model.tokenizer.encode(
-            " ",
+            "I am sorry, ",
             add_special_tokens=False,
             padding=False,
         )
     ] * n
-
-    # model.sample(
-    #    input_ids,
-    #    past=prompt_kv,
-    # )
-    """
-    outputs.past_key_values,
-    outputs.logits,
-    attention_mask,
-    """
-    import pdb
-
-    pdb.set_trace()
 
     completions, transition_scores_ = (
         model.continuation(

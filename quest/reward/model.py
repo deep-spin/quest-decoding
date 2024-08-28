@@ -8,6 +8,9 @@ from quest.utils.data import get_loader
 import numpy as np
 from tqdm import tqdm
 
+from quest.model.base import LanguageModel
+from langchain.prompts import PromptTemplate
+
 # Ignore specific UserWarning from transformers library
 # Configure the transformers logger
 
@@ -50,17 +53,19 @@ class RewardModel(Reward):
         device: int = 0,
         task: str = "text-classification",
         clamp: float = 40,
+        dtype=torch.bfloat16,
+        use_flash_attention: bool = True,
     ):
 
         super().__init__(f"rm:{model_path}")
 
         self.batch_size = batch_size
         self.device = device
-        self.model = pipeline(
+        """self.model = pipeline(
             task,
             model=model_path,
             device=device,
-        )
+        )"""
         self.kwargs = {
             "batch_size": self.batch_size
         }
@@ -91,9 +96,9 @@ class RewardModel(Reward):
 
         self.model = AutoModelForSequenceClassification.from_pretrained(
             model_path,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=dtype,
             pad_token_id=self.tokenizer.pad_token_id,
-            # use_flash_attention_2=use_flash_attention,
+            use_flash_attention_2=use_flash_attention,
             # device_map="auto",
         )
 
@@ -146,6 +151,7 @@ class RewardModel(Reward):
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                 )
+
                 logits = np.clip(
                     outputs.logits[:, 0]
                     .float()
@@ -227,4 +233,109 @@ class ContextualRewardModel(RewardModel):
 
         return super().evaluate(
             context_candidates, **kwargs
+        )
+
+
+class LLMReward(Reward):
+    def __init__(self, llm: LanguageModel):
+        super().__init__(
+            "llm:" + llm.model_path
+        )
+        self.llm = llm
+
+    def evaluate(
+        self,
+        candidates: List[str],
+        accepted_indices: List[int] = None,
+        **kwargs,
+    ) -> List[float]:
+        """
+        Evaluates a list of candidate sequences and returns a list of reward values.
+
+        Args:
+            candidates (List[str]): The list of candidate sequences to evaluate.
+
+        Returns:
+            List[float]: The list of reward values for each candidate sequence.
+
+        """
+
+        _, scores = (
+            self.llm.evaluate_continuation(
+                len(candidates) * [[]],
+                candidates,
+            )
+        )
+
+        return list(map(np.mean, scores))
+
+
+class TemplateLLMReward(LLMReward):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def set_context(
+        self, context: List[PromptTemplate]
+    ):
+        self.prompt_txt = context
+
+    def evaluate(
+        self,
+        candidates: List[str],
+        accepted_indices: List[int] = None,
+        **kwargs,
+    ) -> List[float]:
+        """
+        Evaluates a list of candidate sequences and returns a list of reward values.
+
+        Args:
+            candidates (List[str]): The list of candidate sequences to evaluate.
+
+        Returns:
+            List[float]: The list of reward values for each candidate sequence.
+
+        """
+
+        if accepted_indices is not None:
+            prompts = [
+                self.prompt_txt[i]
+                for i in accepted_indices
+            ]
+        else:
+            prompts = self.prompt_txt
+
+        context_candidates = [
+            template.format(text=str2)
+            for template, str2 in zip(
+                prompts, candidates
+            )
+        ]
+
+        return super().evaluate(
+            context_candidates, **kwargs
+        )
+
+
+class PromptedLLMReward(TemplateLLMReward):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.prefix_prompt = (
+            PromptTemplate.from_template(
+                "{c}{text}"
+            )
+        )
+
+    def set_context(
+        self, context: List[str]
+    ):
+        super().set_context(
+            [
+                self.prefix_prompt.partial(
+                    c=c
+                )
+                for c in context
+            ]
         )

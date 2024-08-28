@@ -21,7 +21,9 @@ class IndexDistribution:
 
     """
 
-    def log_prob(self, index, truncation=None):
+    def log_prob(
+        self, index, truncation=None
+    ):
 
         raise NotImplementedError
 
@@ -39,15 +41,35 @@ class IndexDistribution:
         raise NotImplementedError
 
 
-class Uniform(IndexDistribution):
+class Discretized(IndexDistribution):
+
+    def __init__(self, block_size: int):
+        self.block_size = block_size
 
     def sample(self, truncation):
-        return randint(0, truncation)
+        return (
+            randint(
+                0,
+                truncation
+                // self.block_size,
+            )
+            * self.block_size
+        )
 
-    def log_prob(self, index, truncation) -> float:
-        normalization = truncation
+    def log_prob(
+        self, index, truncation
+    ) -> float:
+        normalization = float(
+            truncation // self.block_size
+        )
 
         return -math.log(normalization)
+
+
+class Uniform(Discretized):
+
+    def __init__(self):
+        super().__init__(1)
 
 
 class Constant(IndexDistribution):

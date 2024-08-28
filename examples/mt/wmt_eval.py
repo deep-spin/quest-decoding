@@ -325,7 +325,7 @@ def main(
     base_dir="mt-outputs/",
     reward_model_path="Unbabel/XCOMET-XL",
     batch_size=16,
-    device_count=1,
+    devices=[0, 1],
     clamp: float = 1e-3,
 ):
 
@@ -346,10 +346,18 @@ def main(
         )
 
     else:
+        os.environ["NCCL_BLOCKING_WAIT"] = (
+            "1"
+        )
+        os.environ[
+            "NCCL_ASYNC_ERROR_HANDLING"
+        ] = "1"
+        os.environ["NCCL_DEBUG"] = "INFO"
+
         reward = CometModel(
             model_path=reward_model_path,
             batch_size=batch_size,
-            device_count=device_count,
+            devices=devices,
             clamp=clamp,
         )
 

@@ -142,6 +142,8 @@ class LocalLanguageModel(LanguageModel):
             temperature=temperature,
         )
 
+        self.model_path = model_path
+
         self.max_new_tokens = max_new_tokens
         self.max_prompt_length = (
             max_prompt_length
