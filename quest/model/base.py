@@ -1,6 +1,10 @@
 from langchain.prompts import PromptTemplate
 from transformers import AutoTokenizer
 
+DEFAULT_TEMPLATE = (
+    PromptTemplate.from_template("{prompt}")
+)
+
 
 class LanguageModel:
     """
@@ -130,7 +134,7 @@ class LocalLanguageModel(LanguageModel):
     def __init__(
         self,
         model_path: str,
-        prompt_template: PromptTemplate,
+        prompt_template: PromptTemplate = DEFAULT_TEMPLATE,
         temperature=1.0,
         max_new_tokens=600,
         max_prompt_length=300,

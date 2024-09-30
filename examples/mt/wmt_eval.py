@@ -1,12 +1,7 @@
 import os
 
 
-from expkit import (
-    ExpSetup,
-    Exp,
-    InstanceEval,
-    Evalutor,
-)
+from expkit import ExpSetup, Exp, Evalutor, DiskStorage
 
 from expkit.ops import proj
 from typing import *
@@ -48,26 +43,20 @@ def compress_predictions_mt(experiment):
     )
     references, sources = [], []
 
-    for i in tqdm(experiment.instances):
+    for i in tqdm(experiment.instances()):
 
         tksi, vcbi = get_unique_mapping(
             list(
                 map(
                     proj("text"),
-                    i.outputs,
+                    i["outputs"],
                 )
             )
         )
 
-        sourcesi = [
-            i.input_data["source_sentence"]
-        ] * len(vcbi)
+        sourcesi = [i["input"]["source_sentence"]] * len(vcbi)
 
-        referencesi = [
-            i.input_data[
-                "reference_sentence"
-            ]
-        ] * len(vcbi)
+        referencesi = [i["input"]["reference_sentence"]] * len(vcbi)
 
         references.append(referencesi)
         sources.append(sourcesi)
@@ -87,14 +76,10 @@ def compress_predictions_mt(experiment):
 class MTRewardEval(Evalutor):
 
     def __init__(self, reward: Reward):
-        super().__init__(
-            "corrected" + reward.get_name()
-        )
+        super().__init__("corrected" + reward.get_name())
         self.reward = reward
 
-    def eval(
-        self, experiment: Exp
-    ) -> List[InstanceEval]:
+    def eval(self, experiment: Exp):
 
         (
             sources,
@@ -102,24 +87,16 @@ class MTRewardEval(Evalutor):
             tokens,
             vocabs,
             counts,
-        ) = compress_predictions_mt(
-            experiment.refresh(force=True)
-        )
+        ) = compress_predictions_mt(experiment)
 
-        self.reward.set_sources(
-            flatten_list(sources)
-        )
-        self.reward.set_references(
-            flatten_list(references)
-        )
+        self.reward.set_sources(flatten_list(sources))
+        self.reward.set_references(flatten_list(references))
 
         scores = sigmoid(
             self.reward.evaluate(
                 candidates=list(
                     map(
-                        lambda x: x.replace(
-                            "</s>", ""
-                        ),
+                        lambda x: x.replace("</s>", ""),
                         flatten_list(
                             vocabs,
                         ),
@@ -135,22 +112,14 @@ class MTRewardEval(Evalutor):
         )
 
         duplicated_scores = [
-            {
-                "scores": invert_unique_mapping(
-                    tks, rsi
-                )
-            }
-            for tks, rsi in zip(
-                tokens, scores
-            )
+            {"scores": invert_unique_mapping(tks, rsi)}
+            for tks, rsi in zip(tokens, scores)
         ]
         return duplicated_scores
 
 
 class CorpusDiversityMetric:
-    def __init__(
-        self, name="", count_repeats=True
-    ) -> None:
+    def __init__(self, name="", count_repeats=True) -> None:
         super().__init__()
         self.name = name
         self.count_repeats = count_repeats
@@ -158,9 +127,7 @@ class CorpusDiversityMetric:
     def get_name(self):
         return self.name
 
-    def compute_diversity(
-        self, prediction_set
-    ):
+    def compute_diversity(self, prediction_set):
         pass
 
     def compute_batch(self, corpus):
@@ -197,17 +164,13 @@ class Pairwise(CorpusDiversityMetric):
         bleu = self.metric.corpus_score(sys_stream, [ref_streams])
         return bleu.score"""
 
-    def pairwise(
-        self, sents
-    ):  # non repeat sents.
+    def pairwise(self, sents):  # non repeat sents.
         _ref, _hypo = [], []
 
         n = len(sents)
 
         if n > 1:
-            d = np.zeros(
-                (n, n), dtype=np.float32
-            )
+            d = np.zeros((n, n), dtype=np.float32)
             for i in range(len(sents)):
                 for j in range(len(sents)):
                     if i != j:
@@ -227,9 +190,7 @@ class Pairwise(CorpusDiversityMetric):
 
     def compute_diversity(self, sentences):
 
-        return self.pairwise(
-            sentences
-        ).tolist()
+        return self.pairwise(sentences).tolist()
 
     def compute_batch(self, corpus):
 
@@ -248,29 +209,16 @@ class Pairwise(CorpusDiversityMetric):
 
 class DiversityEval(Evalutor):
 
-    def __init__(
-        self, metric: CorpusDiversityMetric
-    ):
-        super().__init__(
-            metric.get_name() + "-repr"
-        )
+    def __init__(self, metric: CorpusDiversityMetric):
+        super().__init__(metric.get_name() + "-repr")
         self.metric = metric
 
-    def eval(
-        self, experiment: Exp
-    ) -> List[InstanceEval]:
+    def eval(self, experiment: Exp):
 
-        if (
-            "quest"
-            in experiment.meta["variant"]
-        ):
+        if "quest" in experiment.meta["variant"]:
             outputs = [
-                [
-                    o["text"]
-                    for o in i.outputs
-                    if o["accept"]
-                ]
-                for i in experiment.instances
+                [o["text"] for o in i["outputs"] if o["accept"]]
+                for i in experiment.instances()
             ]
         else:
             outputs = [
@@ -280,32 +228,22 @@ class DiversityEval(Evalutor):
                         i.outputs,
                     )
                 )
-                for i in tqdm(
-                    experiment.instances
-                )
+                for i in tqdm(experiment.instances())
             ]
 
-        scores = self.metric.compute_batch(
-            outputs
-        )
+        scores = self.metric.compute_batch(outputs)
 
-        evals = [
-            {"scores": [s]} for s in scores
-        ]
+        evals = [{"scores": [s]} for s in scores]
 
         return evals
 
 
 class PairwiseBLEU(Pairwise):
 
-    def __init__(
-        self, unique=True, **kwargs
-    ) -> None:
+    def __init__(self, unique=True, **kwargs) -> None:
         super().__init__(
             name="bleu",
-            metric=BLEU(
-                effective_order=True
-            ),
+            metric=BLEU(effective_order=True),
             **kwargs,
         )
 
@@ -316,42 +254,28 @@ class PairwiseBLEU(Pairwise):
         if self.unique:
             sentences = list(set(sentences))
 
-        return self.pairwise(
-            sentences
-        ).tolist()
+        return self.pairwise(sentences).tolist()
 
 
 def main(
     base_dir="mt-outputs/",
     reward_model_path="Unbabel/XCOMET-XL",
     batch_size=16,
-    devices=[0, 1],
+    devices=[0, 1, 2, 3],
     clamp: float = 1e-3,
 ):
 
-    setup = ExpSetup(
-        base_dir,
-        lazy=True,
-        load_instances=True,
-    )
+    setup = ExpSetup(DiskStorage(base_dir=base_dir, mode="rw"))
 
     if len(setup.experiments) == 0:
-        raise FileNotFoundError(
-            "The experiment has no data!"
-        )
+        raise FileNotFoundError("The experiment has no data!")
 
     if reward_model_path == "diversity":
-        ps_eval = DiversityEval(
-            PairwiseBLEU(unique=False)
-        )
+        ps_eval = DiversityEval(PairwiseBLEU(unique=False))
 
     else:
-        os.environ["NCCL_BLOCKING_WAIT"] = (
-            "1"
-        )
-        os.environ[
-            "NCCL_ASYNC_ERROR_HANDLING"
-        ] = "1"
+        os.environ["NCCL_BLOCKING_WAIT"] = "1"
+        os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
         os.environ["NCCL_DEBUG"] = "INFO"
 
         reward = CometModel(
@@ -361,24 +285,16 @@ def main(
             clamp=clamp,
         )
 
-        ps_eval = MTRewardEval(
-            reward=reward
-        )
+        ps_eval = MTRewardEval(reward=reward)
 
-    setup = setup.filter(
-        lambda x: not x.has_eval(
-            ps_eval.eval_name
-        )
-    )
+    setup = setup.filter(lambda x: not x.has_eval(ps_eval.eval_name))
 
     print(setup.map(lambda x: x.name))
 
-    setup = setup.safe_map(
+    setup = setup.map(
         lambda experiment: (
             ps_eval(experiment)
-            if not experiment.has_eval(
-                ps_eval.eval_name
-            )
+            if not experiment.has_eval(ps_eval.eval_name)
             # and (
             #    experiment.meta["variant"]
             #    == "ancestral"

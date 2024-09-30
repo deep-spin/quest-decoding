@@ -60,7 +60,7 @@ class Quest:
             return {
                 "reward": self.reward,
                 # "transition_scores": self.transition_scores,
-                # "completion": self.completion,
+                "completion": self.completion,
                 "text": self.text,
                 "t": self.t,
                 "index": self.index,
@@ -545,7 +545,7 @@ class Quest:
             )
 
             self.stack(
-                prev_state,
+                proposal_state,
                 accept.tolist(),
                 A.tolist(),
             )

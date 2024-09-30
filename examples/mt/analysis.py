@@ -1,98 +1,34 @@
+from expkit import DiskStorage
 from expkit import ExpSetup
-from expkit.ops import (
-    EvalMean,
-    EvalLast,
-    EvalMax,
-    EvalTotalMean,
-    EvalMeanLast,
-    EvalMeanMax,
-    Operation,
-)
-from functools import partial
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
-import re
-
-# beta in used by the rlhf model: 0.0325
-N = 1024
-K = 64
-TEMP = 0.6
-N_MEASURAMENTS = [
-    1,
-    2,
-    4,
-    8,
-    16,
-    32,
-    64,
-    128,
-    256,
-    512,
-    1024,
-]
-
-eval_key = (
-    "lastnumber"  # "crm:hamishivi-tulu-v2"
-)
-rm_path = "hamishivi/tulu-v2.5-7b-uf-rm"
 
 
+lp = ["en-is", "en-zh", "en-cz"]
+metric = ["qe:Unbabel-wmt23-cometkiwi-da-xl"]
 setup = ExpSetup(
-    "/gscratch/ark/graf/quest-rlhf/mt-outputs/",
-    lazy=True,
-    load_instances=False,
-).query({"steps": 128})
-
-
-# print(setup.meta())
-
-
-base = setup.query(
+    DiskStorage("/gscratch/ark/graf/quest-decoding/examples/mt/mt-outputs/"),
+).query(
     {
-        "variant": "ancestral",
+        "model_path": "haoranxu/ALMA-7B",
+        "reward_model_path": "Unbabel/wmt23-cometkiwi-da-xl",
     }
 )
 
-quest = setup.query({"variant": "quest"})
+lps = {m["language_pair"] for m in setup.meta()}
+
+lp_count = {lp: len(setup.query({"language_pair": lp})) for lp in lps}
+
+print(lp_count)
 
 
-for lp in ["en-zh", "en-cs"]:
-    print("---" * 20)
-    print(lp)
-    print("base")
-    print(
-        len(
-            base.query(
-                {"language_pair": lp}
-            ).meta()
-        )
-    )
-    print(
-        (
-            [
-                x["temperature"]
-                for x in quest.query(
-                    {"language_pair": lp}
-                ).meta()
-            ]
-        )
-    )
-    print("quest")
-    print(
-        len(
-            quest.query(
-                {"language_pair": lp}
-            ).meta()
-        )
-    )
-    print(
-        (
-            [
-                x["beta"]
-                for x in quest.query(
-                    {"language_pair": lp}
-                ).meta()
-            ]
-        )
-    )
+for e in setup.query({"language_pair": "en-is"}).sort("at"):
+
+    # if e.get("at") >= "2024-08-22T14:06:26.102940":
+    print("--" * 20)
+    print(e.get("at"))
+    print(e.get("variant"))
+    print(e.evals().keys())
+    # print(e.evals()["qe:Unbabel-wmt23-cometkiwi-da-xl"])
+
+import pdb
+
+pdb.set_trace()

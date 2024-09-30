@@ -1,5 +1,6 @@
 from quest.model.base import (
     LocalLanguageModel,
+    DEFAULT_TEMPLATE,
 )
 from langchain.prompts import PromptTemplate
 import numpy as np
@@ -10,10 +11,6 @@ from vllm import LLM, SamplingParams
 from quest.utils.list import (
     flatten_list,
     unflatten_list,
-)
-
-DEFAULT_TEMPLATE = (
-    PromptTemplate.from_template("{prompt}")
 )
 
 

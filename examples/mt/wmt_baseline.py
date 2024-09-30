@@ -13,7 +13,7 @@ from datetime import datetime
 from quest.model.vllm import VLLM
 from quest.reward.mt import QEModel
 
-from expkit import Exp
+from expkit import Exp, DiskStorage
 import torch
 
 torch.set_float32_matmul_precision("medium")
@@ -33,13 +33,9 @@ ABR_LANGUAGE_MAP = {
 
 transformers.logging.set_verbosity_error()
 
-warnings.filterwarnings(
-    "ignore"
-)  # Ignore warnings
+warnings.filterwarnings("ignore")  # Ignore warnings
 
-logging.getLogger().setLevel(
-    logging.ERROR
-)  # Show only errors in logging
+logging.getLogger().setLevel(logging.ERROR)  # Show only errors in logging
 logging.basicConfig(level=logging.ERROR)
 
 llms = {
@@ -58,12 +54,8 @@ llms = {
 }
 
 
-def load_wmt_data(
-    language_pair: str = "en-de", year="23"
-):
-    src_lang, tgt_lang = (
-        language_pair.split("-")
-    )
+def load_wmt_data(language_pair: str = "en-de", year="23"):
+    src_lang, tgt_lang = language_pair.split("-")
     data = load_dataset(
         f"haoranxu/WMT{year}-Test",
         language_pair,
@@ -71,18 +63,10 @@ def load_wmt_data(
     )
     input_data = [
         {
-            "reference_sentence": sample[
-                language_pair
-            ][tgt_lang],
-            "source_sentence": sample[
-                language_pair
-            ][src_lang],
-            "source_language": ABR_LANGUAGE_MAP[
-                src_lang
-            ],
-            "target_language": ABR_LANGUAGE_MAP[
-                tgt_lang
-            ],
+            "reference_sentence": sample[language_pair][tgt_lang],
+            "source_sentence": sample[language_pair][src_lang],
+            "source_language": ABR_LANGUAGE_MAP[src_lang],
+            "target_language": ABR_LANGUAGE_MAP[tgt_lang],
         }
         for sample in data
     ]
@@ -107,6 +91,7 @@ def main(
     np.random.seed(seed)
 
     experiment = Exp(
+        storage=DiskStorage(save_path, mode="rw"),
         meta={
             "steps": steps,
             "temperature": temperature,
@@ -119,14 +104,12 @@ def main(
             "at": datetime.now().isoformat(),
             "language_pair": language_pair,
             "llm": llm,
-        }
+        },
     )
 
     model = VLLM(
         model_path=llms[llm]["path"],
-        download_dir=os.environ.get(
-            "HF_HOME", "/tmp/"
-        ),
+        download_dir=os.environ.get("HF_HOME", "/tmp/"),
         stop_tokens=stop_tokens,
         temperature=temperature,
         gpu_memory_utilization=gpu_memory_utilization,
@@ -137,9 +120,7 @@ def main(
         prompt_template=llms[llm]["prompt"],
     )
 
-    input_data = load_wmt_data(
-        language_pair, year=year
-    )
+    input_data = load_wmt_data(language_pair, year=year)
 
     input_data = [
         {
@@ -149,25 +130,16 @@ def main(
         for x in input_data
     ]
 
-    completions_txt = model.ancestral(
-        input_data, n=steps
-    )
+    completions_txt = model.ancestral(input_data, n=steps)
 
     outputs = []
     for instance_txt in completions_txt:
-        outputs.append(
-            [
-                {"text": state_t}
-                for state_t in instance_txt
-            ]
-        )
+        outputs.append([{"text": state_t} for state_t in instance_txt])
 
     experiment.add_instances(
         inputs=input_data,
         outputs=outputs,
     )
-
-    experiment.save(save_path)
 
 
 if __name__ == "__main__":
