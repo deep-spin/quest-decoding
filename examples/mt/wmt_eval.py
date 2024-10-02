@@ -225,7 +225,7 @@ class DiversityEval(Evalutor):
                 list(
                     map(
                         proj("text"),
-                        i.outputs,
+                        i["outputs"],
                     )
                 )
                 for i in tqdm(experiment.instances())
