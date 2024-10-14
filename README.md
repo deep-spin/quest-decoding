@@ -42,27 +42,50 @@ pip install git+https://github.com/deep-spin/quest-decoding.git
 
     from langchain.prompts import PromptTemplate
     from quest import RewardModel
-    from quest import VLLM
+    from quest import VLLM, RLHFSuffixProposal
 
 
     template =  PromptTemplate.from_template(
         "I received the following comment on a X: {tweet}. How should I respond?:\n"
-    ) # a prompt template you define - usefull for tasks like translation. 
+    ) 
+    # a prompt template you define - usefull for tasks like translation. 
+    # also really important to have the chatformat for the majority of models in use now. 
     
     test_input_data = [{
         "tweet": "You should refrain from commenting on this matter."
     }]
 
+ 
     model = VLLM(
-        model_path="haoranxu/ALMA-7B",
-        prompt_template=template,
+        model_path="meta-llama/Llama-3.2-1B",
     )
+
+
+    def toformat(data):
+
+        return {
+            "prompt": model.tokenizer.apply_chat_template(
+                [
+                    {
+                        "role": "user",
+                        "content": template.format(**data),
+                    }
+                ],
+                tokenize=False,
+                add_generation_prompt=True,
+            ),
+        }
+
+    test_input_data=map(toformat,test_input_data)
 
     reward = RewardModel("lvwerra/distilbert-imdb")  # sentiment model from HF. 
     
     chain = Quest(
         input_data=test_input_data,
-        model=model,
+        proposal=RLHFSuffixProposal(
+            model=model,
+        ),
+        beta=0.1,
         reward=reward,
     )
     
