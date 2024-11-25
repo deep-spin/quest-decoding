@@ -7,9 +7,7 @@ from comet import (
 from typing import List
 import os
 
-os.environ["TOKENIZERS_PARALLELISM"] = (
-    "false"
-)
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 class CometModel(Reward):
@@ -24,12 +22,8 @@ class CometModel(Reward):
     ):
         super().__init__("qe:" + model_path)
 
-        model_path = download_model(
-            model_path
-        )
-        self.model = load_from_checkpoint(
-            model_path, strict=False
-        )
+        model_path = download_model(model_path)
+        self.model = load_from_checkpoint(model_path, strict=False)
         self.batch_size = batch_size
         self.device_count = len(devices)
         self.devices = devices
@@ -37,14 +31,10 @@ class CometModel(Reward):
         self.sources = None
         self.references = None
 
-    def set_sources(
-        self, sources: List[str]
-    ):
+    def set_sources(self, sources: List[str]):
         self.sources = sources
 
-    def set_references(
-        self, references: List[str]
-    ):
+    def set_references(self, references: List[str]):
         self.references = references
 
     def make_input(
@@ -59,18 +49,13 @@ class CometModel(Reward):
                 "mt": c,
                 "ref": self.references[i],
             }
-            for c, i in zip(
-                candidates, accepted_indices
-            )
+            for c, i in zip(candidates, accepted_indices)
         ]
 
         return data
 
     def evaluate(
-        self,
-        candidates: List[str],
-        accepted_indices=None,
-        **kwargs
+        self, candidates: List[str], accepted_indices=None, **kwargs
     ) -> List[float]:
         """
         Evaluates a list of candidate sequences and returns a list of reward values.
@@ -84,13 +69,9 @@ class CometModel(Reward):
         """
 
         if accepted_indices is None:
-            accepted_indices = list(
-                range(len(candidates))
-            )
+            accepted_indices = list(range(len(candidates)))
 
-        data = self.make_input(
-            candidates, accepted_indices
-        )
+        data = self.make_input(candidates, accepted_indices)
 
         return [
             clamp_logit(score, self.clamp)
@@ -99,20 +80,16 @@ class CometModel(Reward):
                 batch_size=self.batch_size,
                 gpus=self.device_count,
                 devices=self.devices,
+                length_batching=False,
+                num_workers=1,
             )["scores"]
         ]
 
 
 class QEModel(CometModel):
 
-    def __init__(
-        self,
-        model_path="Unbabel/wmt22-cometkiwi-da",
-        **kwargs
-    ):
-        super().__init__(
-            model_path=model_path, **kwargs
-        )
+    def __init__(self, model_path="Unbabel/wmt22-cometkiwi-da", **kwargs):
+        super().__init__(model_path=model_path, **kwargs)
 
     def make_input(
         self,
@@ -124,7 +101,5 @@ class QEModel(CometModel):
                 "src": self.sources[i],
                 "mt": c,
             }
-            for c, i in zip(
-                candidates, accepted_indices
-            )
+            for c, i in zip(candidates, accepted_indices)
         ]

@@ -2,6 +2,7 @@ import os
 
 
 from expkit import ExpSetup, Exp, Evalutor, DiskStorage
+import random
 
 from expkit.ops import proj
 from typing import *
@@ -20,6 +21,7 @@ from quest.utils.list import (
 from tqdm import tqdm
 import numpy as np
 import re
+import json
 
 from sacrebleu.metrics import (
     BLEU,
@@ -260,12 +262,18 @@ class PairwiseBLEU(Pairwise):
 def main(
     base_dir="mt-outputs/",
     reward_model_path="Unbabel/XCOMET-XL",
-    batch_size=16,
-    devices=[0, 1, 2, 3],
+    batch_size=4,
+    devices=[
+        0,
+    ],
     clamp: float = 1e-3,
+    query_args={},
 ):
 
-    setup = ExpSetup(DiskStorage(base_dir=base_dir, mode="rw"))
+    if isinstance(query_args, str):
+        query_args = json.loads(query_args)
+
+    setup = ExpSetup(DiskStorage(base_dir=base_dir, mode="rw")).query(query_args)
 
     if len(setup.experiments) == 0:
         raise FileNotFoundError("The experiment has no data!")
@@ -291,7 +299,13 @@ def main(
 
     print(setup.map(lambda x: x.name))
 
-    setup = setup.map(
+    # setup.experiment reorder
+    experiments = setup.experiments
+    random.shuffle(experiments)
+
+    setup.experiments = experiments
+
+    setup = setup.safe_map(
         lambda experiment: (
             ps_eval(experiment)
             if not experiment.has_eval(ps_eval.eval_name)

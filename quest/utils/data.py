@@ -12,10 +12,12 @@ class TextDataset(Dataset):
         texts,
         tokenizer,
         max_length=512,
+        add_special_tokens=False,
     ):
         self.texts = texts
         self.tokenizer = tokenizer
         self.max_length = max_length
+        self.add_special_tokens = add_special_tokens
 
     def __len__(self):
         return len(self.texts)
@@ -25,7 +27,7 @@ class TextDataset(Dataset):
 
         encoding = self.tokenizer.encode_plus(
             text,
-            add_special_tokens=True,
+            add_special_tokens=self.add_special_tokens,
             max_length=self.max_length,
             padding="max_length",
             truncation=True,
@@ -34,12 +36,8 @@ class TextDataset(Dataset):
             # pad_token=self.tokenizer.eos_token,
         )
         return {
-            "input_ids": encoding[
-                "input_ids"
-            ].flatten(),
-            "attention_mask": encoding[
-                "attention_mask"
-            ].flatten(),
+            "input_ids": encoding["input_ids"].flatten(),
+            "attention_mask": encoding["attention_mask"].flatten(),
         }
 
 
@@ -48,7 +46,7 @@ def get_loader(
     tokenizer,
     batch_size: int = 32,
     use_tqdm: bool = False,
-    max_length: int = 512,
+    max_length: int = 1024,
 ):
     ds = TextDataset(
         candidates,

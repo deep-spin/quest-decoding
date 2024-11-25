@@ -1,9 +1,7 @@
 from langchain.prompts import PromptTemplate
 from transformers import AutoTokenizer
 
-DEFAULT_TEMPLATE = (
-    PromptTemplate.from_template("{prompt}")
-)
+DEFAULT_TEMPLATE = PromptTemplate.from_template("{prompt}")
 
 
 class LanguageModel:
@@ -22,9 +20,7 @@ class LanguageModel:
         prompt_template: PromptTemplate,
         temperature=1.0,
     ):
-        self.prompt_template = (
-            prompt_template
-        )
+        self.prompt_template = prompt_template
         self.temperature = temperature
 
     def encode(self, prompt_data):
@@ -37,10 +33,7 @@ class LanguageModel:
         Returns:
             The tokenized representation of the prompts.
         """
-        prompt_txt = [
-            self.get_prompt(**data)
-            for data in prompt_data
-        ]
+        prompt_txt = [self.get_prompt(**data) for data in prompt_data]
         return self.tokenize(prompt_txt)
 
     def get_prompt(self, **input_data):
@@ -56,21 +49,14 @@ class LanguageModel:
         input_data = {
             k: v
             for k, v in input_data.items()
-            if k
-            in self.prompt_template.input_variables
+            if k in self.prompt_template.input_variables
         }  # filter out relevant variables.
 
-        prompt = (
-            self.prompt_template.format(
-                **input_data
-            )
-        )
+        prompt = self.prompt_template.format(**input_data)
 
         return prompt
 
-    def continuation(
-        self, x, prefix=None, **kwargs
-    ):
+    def continuation(self, x, prefix=None, **kwargs):
         """
         Generates a continuation given an input sequence.
 
@@ -114,9 +100,7 @@ class LanguageModel:
         """
         raise NotImplementedError()
 
-    def decode_tokenize(
-        self, ids, skip_special_tokens=False
-    ):
+    def decode_tokenize(self, ids, skip_special_tokens=False):
         """
         Decodes and tokenizes the given IDs.
 
@@ -149,30 +133,19 @@ class LocalLanguageModel(LanguageModel):
         self.model_path = model_path
 
         self.max_new_tokens = max_new_tokens
-        self.max_prompt_length = (
-            max_prompt_length
-        )
+        self.max_prompt_length = max_prompt_length
         self.stop_tokens = stop_tokens
-        self.skip_special_tokens = (
-            skip_special_tokens
-        )
-        self.tokenizer = (
-            AutoTokenizer.from_pretrained(
-                model_path,
-                padding_side="left",
-            )
+        self.skip_special_tokens = skip_special_tokens
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_path,
+            padding_side="left",
         )
 
-        if (
-            self.tokenizer.pad_token_id
-            is None
-        ):
+        if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = (
                 self.tokenizer.bos_token_id
             )  # THIS IS ACTUALLY REALLY IMPORTANT :) THIS HIDDEN NIGHTMARE DONT USE EOS. - w/ AR models in batch we may have padding in the beginig - obvious reason left to right gen.
-            self.tokenizer.pad_token = (
-                self.tokenizer.bos_token
-            )
+            self.tokenizer.pad_token = self.tokenizer.bos_token
 
     def tokenize(self, prompt):
 

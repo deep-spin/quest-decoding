@@ -16,6 +16,7 @@ from quest.reward.base import Reward
 from quest.utils.list import (
     join_accepted_values,
 )
+import torch
 
 
 class Quest:
@@ -36,21 +37,13 @@ class Quest:
         This class represents the state of the Markov Chain.
         """
 
-        reward: List[
-            float
-        ]  # The reward obtained at the current state
+        reward: List[float]  # The reward obtained at the current state
         transition_scores: List[
             List[float]
         ]  # The scores for transitioning from the current state to other states
-        completion: List[
-            List[float]
-        ]  # The completion tensor for the current state
-        text: List[
-            str
-        ]  # The completion text for the current state
-        index: List[
-            int
-        ]  # The index of the current state
+        completion: List[List[float]]  # The completion tensor for the current state
+        text: List[str]  # The completion text for the current state
+        index: List[int]  # The index of the current state
         t: int = 0  # The current time step
 
         def to_json(self):
@@ -66,34 +59,15 @@ class Quest:
                 "index": self.index,
             }
 
-        def copy_relevant(
-            self, relevant_chains: List[int]
-        ):
+        def copy_relevant(self, relevant_chains: List[int]):
 
             return Quest.State(
-                reward=[
-                    self.reward[i]
-                    for i in relevant_chains
-                ],
-                transition_scores=[
-                    self.transition_scores[
-                        i
-                    ]
-                    for i in relevant_chains
-                ],
-                completion=[
-                    self.completion[i]
-                    for i in relevant_chains
-                ],
-                text=[
-                    self.text[i]
-                    for i in relevant_chains
-                ],
+                reward=[self.reward[i] for i in relevant_chains],
+                transition_scores=[self.transition_scores[i] for i in relevant_chains],
+                completion=[self.completion[i] for i in relevant_chains],
+                text=[self.text[i] for i in relevant_chains],
                 t=self.t,
-                index=[
-                    self.index[i]
-                    for i in relevant_chains
-                ],
+                index=[self.index[i] for i in relevant_chains],
             )
 
         def paste_relevant(
@@ -104,26 +78,12 @@ class Quest:
 
             new_state = copy.deepcopy(self)
 
-            for i, chain in enumerate(
-                relevant_chains
-            ):
-                new_state.reward[chain] = (
-                    additions.reward[i]
-                )
-                new_state.transition_scores[
-                    chain
-                ] = additions.transition_scores[
-                    i
-                ]
-                new_state.completion[
-                    chain
-                ] = additions.completion[i]
-                new_state.text[chain] = (
-                    additions.text[i]
-                )
-                new_state.index[chain] = (
-                    additions.index[i]
-                )
+            for i, chain in enumerate(relevant_chains):
+                new_state.reward[chain] = additions.reward[i]
+                new_state.transition_scores[chain] = additions.transition_scores[i]
+                new_state.completion[chain] = additions.completion[i]
+                new_state.text[chain] = additions.text[i]
+                new_state.index[chain] = additions.index[i]
 
             new_state.t = additions.t
 
@@ -135,12 +95,15 @@ class Quest:
         This class represents the output of the Markov Chain.
         """
 
-        samples: List[str]
+        # samples: List[str]
         # accepted_indices: List[List[int]]
         # rejected_indices: List[List[int]]
         state_path: List[Dict[str, str]]
 
     class Proposal:
+
+        def __init__(self, reward: Reward):
+            self.rm = reward
 
         def transition(
             self,
@@ -149,30 +112,63 @@ class Quest:
         ):
             raise NotImplementedError
 
-        def transition_likelihood_ratio(
+        def transition_and_evaluation(
             self,
             previous_state,
-            proposal_state,
-            **kwargs
+            prompt: List[List[int]],
         ):
+
+            torch.cuda.nvtx.range_push("proposal:generate")
+            proposal_state = self.transition(previous_state, prompt)
+            torch.cuda.nvtx.range_pop()
+
+            torch.cuda.nvtx.range_push("proposal:compute_reward")
+
+            proposal_reward = self.compute_reward(
+                proposal_state.text,
+            )
+            torch.cuda.nvtx.range_pop()
+
+            proposal_state.reward = proposal_reward
+
+            return proposal_state
+
+        def compute_reward(
+            self,
+            proposal_text: List[str],
+            uncomplete_indices: Union[None, List[int]] = None,
+        ) -> List[float]:
+            """
+            This function calculates the log reward for a given proposal text.
+
+            Parameters:
+            proposal_text (str): The text for which the reward is to be calculated.
+
+            Returns:
+            float: The calculated log reward.
+
+            """
+
+            value = self.rm.evaluate(
+                proposal_text,
+                accepted_indices=uncomplete_indices,
+            )
+
+            return value
+
+        def transition_likelihood_ratio(self, previous_state, proposal_state, **kwargs):
             raise NotImplementedError
 
         def get_prompt(
             self,
-            input_data: List[
-                Dict[str, str]
-            ],
+            input_data: List[Dict[str, str]],
         ):
             raise NotImplementedError
 
-        def bootstrap_initial_state(
-            self, prompt, samples: List[str]
-        ):
+        def bootstrap_initial_state(self, prompt, samples: List[str]):
             raise NotImplementedError
 
-        def draw_initial_state(
-            self, prompt
-        ):
+        def draw_initial_state(self, prompt):
             raise NotImplementedError
 
         def join_accepted_values(
@@ -187,9 +183,8 @@ class Quest:
         self,
         input_data: List[Dict[str, str]],
         proposal: Proposal,
-        reward: Reward,
+        # reward: Reward,
         beta: float = 0.1,
-        avoid_redundancy: bool = True,
         logratio_clamp: float = 20,
     ):
         """
@@ -206,85 +201,40 @@ class Quest:
         """
         self.chains = len(input_data)
         self.input_data = input_data
-        self.rm = reward
+        # self.rm = reward
         self.beta = beta
         self.proposal = proposal
-        self.avoid_redundancy = (
-            avoid_redundancy
-        )
         self.state_path = []
-        self.accepted_indices = [
-            [] for _ in range(self.chains)
-        ]
-        self.rejected_indices = [
-            [] for _ in range(self.chains)
-        ]
-        self.samples = [
-            [] for _ in range(self.chains)
-        ]
+        self.accepted_indices = [[] for _ in range(self.chains)]
+        self.rejected_indices = [[] for _ in range(self.chains)]
+        self.samples = [[] for _ in range(self.chains)]
         self.logratio_clamp = logratio_clamp
 
         self.steps = 0
 
-    def compute_reward(
-        self,
-        proposal_text: List[str],
-        uncomplete_indices: Union[
-            None, List[int]
-        ] = None,
-    ) -> List[float]:
-        """
-        This function calculates the log reward for a given proposal text.
+    def start_chain(self, prompt, warm_start=None) -> State:
 
-        Parameters:
-        proposal_text (str): The text for which the reward is to be calculated.
-
-        Returns:
-        float: The calculated log reward.
-
-        """
-
-        value = self.rm.evaluate(
-            proposal_text,
-            accepted_indices=uncomplete_indices,
-        )
-
-        return [
-            v / self.beta for v in value
-        ]
-
-    def start_chain(
-        self, prompt, warm_start=None
-    ) -> State:
+        torch.cuda.nvtx.range_push("quest:start_chain")
 
         if warm_start is None:
 
-            state = self.proposal.draw_initial_state(
-                prompt
-            )
+            state = self.proposal.draw_initial_state(prompt)
 
             # Compute the reward for the initial completion
 
-            for i, t in enumerate(
-                state.text
-            ):
+            for i, t in enumerate(state.text):
                 self.samples[i].append(t)
 
         else:
-            self.samples = copy.deepcopy(
-                warm_start
-            )
+            self.samples = copy.deepcopy(warm_start)
 
             state = self.proposal.bootstrap_initial_state(
                 prompt,
                 warm_start,
             )
 
+        torch.cuda.nvtx.range_pop()
         # Compute the reward for the initial completion
-
-        state.reward = self.compute_reward(
-            state.text
-        )
 
         self.stack(
             state,
@@ -295,10 +245,7 @@ class Quest:
         return state
 
     def criterion(
-        self,
-        previous_state: State,
-        proposal_state: State,
-        **kwargs
+        self, previous_state: State, proposal_state: State, **kwargs
     ) -> np.ndarray:
         """
         This function calculates the Metropolis-Hastings criterion for accepting or rejecting a proposal state.
@@ -320,21 +267,16 @@ class Quest:
         """
 
         log_transition_ratio = self.proposal.transition_likelihood_ratio(
-            previous_state=previous_state,
-            proposal_state=proposal_state,
-            **kwargs
+            previous_state=previous_state, proposal_state=proposal_state, **kwargs
         )
 
         # Calculate the log reward ratio
-        log_reward_ratio = np.array(
-            proposal_state.reward
-        ) - np.array(previous_state.reward)
+        log_reward_ratio = (
+            np.array(proposal_state.reward) - np.array(previous_state.reward)
+        ) / self.beta
 
         # Calculate the sum of the log transition ratio and log reward ratio
-        sum_value = (
-            log_reward_ratio
-            + log_transition_ratio
-        )
+        sum_value = log_reward_ratio + log_transition_ratio
 
         # Clamp the sum value to avoid numerical instability
         clamped_value = np.clip(
@@ -344,9 +286,7 @@ class Quest:
         )
 
         # Calculate the detailed balance as the exponential of the clamped sum value
-        detailed_balance = np.exp(
-            clamped_value
-        )
+        detailed_balance = np.exp(clamped_value)
 
         # Calculate the acceptance probabilities as the minimum of the detailed balance and 1
         alpha = np.minimum(
@@ -359,9 +299,6 @@ class Quest:
         self,
         previous_state: State,
         prompt,
-        uncomplete_indices: Union[
-            None, List[int]
-        ] = None,
     ) -> Tuple[State, np.ndarray]:
         """
         This function performs one step of the Metropolis-Hastings MCMC algorithm.
@@ -374,34 +311,19 @@ class Quest:
         tuple: A tuple containing the proposal state, the proposal text, and the detailed balance.
         """
 
-        proposal_state = (
-            self.proposal.transition(
-                previous_state, prompt
-            )
-        )
+        torch.cuda.nvtx.range_push("quest:draw_transition")
 
-        if self.avoid_redundancy:
-            proposal_reward = self.compute_reward(
-                proposal_state.text,
-                uncomplete_indices=uncomplete_indices,
-            )
-        else:
-            proposal_reward = (
-                self.compute_reward(
-                    proposal_state.text,
-                )
-            )
-
-        proposal_state.reward = (
-            proposal_reward
+        proposal_state = self.proposal.transition_and_evaluation(
+            previous_state=previous_state,
+            prompt=prompt,
         )
+        torch.cuda.nvtx.range_pop()
 
         alpha = self.criterion(
             previous_state,
             proposal_state,
             prompt=prompt,
         )
-
         return (
             proposal_state,
             alpha,
@@ -417,10 +339,7 @@ class Quest:
         self.state_path.append(
             {
                 **state.to_json(),
-                "sample_counts": [
-                    len(s)
-                    for s in self.samples
-                ],
+                "sample_counts": [len(s) for s in self.samples],
                 "accept": accept,
                 "criterion": alpha,
             }
@@ -429,41 +348,21 @@ class Quest:
     def get_index_of_uncompleted_chains(
         self,
     ) -> List[int]:
-        enough_accepts = (
-            lambda s: (len(s) - self.steps)
-            >= 0
-        )
-        inds = [
-            i
-            for i, s in enumerate(
-                self.samples
-            )
-            if not enough_accepts(s)
-        ]
+        enough_accepts = lambda s: (len(s) - self.steps) >= 0
+        inds = [i for i, s in enumerate(self.samples) if not enough_accepts(s)]
         return inds
 
     def get_index_of_completed_chains(
         self,
     ) -> List[int]:
-        enough_accepts = (
-            lambda s: (len(s) - self.steps)
-            >= 0
-        )
-        inds = [
-            i
-            for i, s in enumerate(
-                self.samples
-            )
-            if enough_accepts(s)
-        ]
+        enough_accepts = lambda s: (len(s) - self.steps) >= 0
+        inds = [i for i, s in enumerate(self.samples) if enough_accepts(s)]
         return inds
 
     def run(
         self,
         steps: int = 100,
-        warm_start: Union[
-            None, List[str]
-        ] = None,
+        warm_start: Union[None, List[str]] = None,
         use_tqdm: bool = False,
         n: Union[None, int] = None,
     ) -> Output:
@@ -481,23 +380,19 @@ class Quest:
         - Output: A named tuple containing the samples, accepted indices, rejected indices, and state path.
         """
 
+        torch.cuda.nvtx.range_push("quest:run")
+
         if n is None:
             n = steps
 
         self.steps = steps
         # Draw the initial state
-        self.prompt = (
-            self.proposal.get_prompt(
-                self.input_data
-            )
-        )
+        self.prompt = self.proposal.get_prompt(self.input_data)
 
         state = self.start_chain(
             self.prompt,
             warm_start=warm_start,
         )
-
-        prev_state = state
 
         if use_tqdm:
             iter = tqdm(range(n))
@@ -506,33 +401,16 @@ class Quest:
         # Run the chain for the specified number of steps
         for i in iter:
 
-            uncomplete_indices = (
-                self.get_index_of_uncompleted_chains()
+            # uncomplete_indices = self.get_index_of_uncompleted_chains()
+
+            prompt = self.prompt
+
+            proposal_state, A = self.draw_transition(
+                previous_state=state,
+                prompt=prompt,
             )
 
-            if len(uncomplete_indices) == 0:
-                break
-
-            if self.avoid_redundancy:
-                prompt = [
-                    self.prompt[i]
-                    for i in uncomplete_indices
-                ]
-                state = prev_state.copy_relevant(
-                    uncomplete_indices
-                )
-
-            else:
-                prompt = self.prompt
-
-            proposal_state, A = (
-                self.draw_transition(
-                    previous_state=state,
-                    prompt=prompt,
-                    uncomplete_indices=uncomplete_indices,
-                )
-            )
-
+            torch.cuda.nvtx.range_push("quest:rearrange_state")
             # Decide whether to accept the proposal
             accept = np.array(
                 bernoulli(A).rvs(),
@@ -550,42 +428,11 @@ class Quest:
                 A.tolist(),
             )
 
-            if self.avoid_redundancy:
-                prev_state = prev_state.paste_relevant(
-                    uncomplete_indices,
-                    state,
-                )
-            else:
-                prev_state = state
+            torch.cuda.nvtx.range_pop()
 
-            chains_tochange = [
-                i
-                for i, predi in zip(
-                    uncomplete_indices,
-                    accept,
-                )
-                if predi
-            ]
-
-            samples_toadd = [
-                texti
-                for predi, texti in zip(
-                    accept,
-                    proposal_state.text,
-                )
-                if predi
-            ]
-
-            for index, chain in enumerate(
-                chains_tochange
-            ):
-
-                self.samples[chain].append(
-                    samples_toadd[index]
-                )
-
+        torch.cuda.nvtx.range_pop()
         return Quest.Output(
-            samples=self.samples,
+            # samples=self.samples,
             # accepted_indices=self.accepted_indices,
             # rejected_indices=self.rejected_indices,
             state_path=self.state_path,

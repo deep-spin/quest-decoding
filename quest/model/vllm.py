@@ -36,21 +36,14 @@ class VLLM(LocalLanguageModel):
             skip_special_tokens=skip_special_tokens,
         )
 
-        self.model = LLM(
-            model=model_path, **llm_kwargs
-        )
+        self.model = LLM(model=model_path, **llm_kwargs)
 
-    def continuation(
-        self, prompt, prefix=None
-    ):
+    def continuation(self, prompt, prefix=None):
 
         if prefix is None:
             input_data = prompt
         else:
-            input_data = [
-                x[0] + x[1]
-                for x in zip(prompt, prefix)
-            ]
+            input_data = [x[0] + x[1] for x in zip(prompt, prefix)]
 
         sampling_params = SamplingParams(
             temperature=self.temperature,
@@ -68,10 +61,7 @@ class VLLM(LocalLanguageModel):
             use_tqdm=False,
         )
 
-        completion = [
-            list(out.outputs[0].token_ids)
-            for out in outputs
-        ]
+        completion = [list(out.outputs[0].token_ids) for out in outputs]
 
         scores = [
             [
@@ -81,45 +71,24 @@ class VLLM(LocalLanguageModel):
                     out.outputs[0].logprobs,
                 )
             ]
-            for compl, out in zip(
-                completion, outputs
-            )
+            for compl, out in zip(completion, outputs)
         ]
 
         return completion, scores
 
-    def evaluate_continuation(
-        self, prompt, completion_text
-    ):
+    def evaluate_continuation(self, prompt, completion_text):
 
         input_ids = []
         completion_ids = []
         ns = []
-        for prompt_ids, completion in zip(
-            prompt, completion_text
-        ):
+        for prompt_ids, completion in zip(prompt, completion_text):
 
             ns.append(len(prompt_ids))
-            completion_ids_i = (
-                self.tokenize([completion])[
-                    0
-                ][1:]
-            )
+            completion_ids_i = self.tokenize([completion])[0][1:]
 
-            input_ids_i = (
-                prompt_ids
-                + completion_ids_i
-                + [
-                    self.tokenizer.eos_token_id
-                ]
-            )
+            input_ids_i = prompt_ids + completion_ids_i + [self.tokenizer.eos_token_id]
 
-            completion_ids.append(
-                completion_ids_i
-                + [
-                    self.tokenizer.eos_token_id
-                ]
-            )
+            completion_ids.append(completion_ids_i + [self.tokenizer.eos_token_id])
             input_ids.append(input_ids_i)
 
         sampling_params = SamplingParams(
@@ -143,9 +112,7 @@ class VLLM(LocalLanguageModel):
                     out.prompt_logprobs[1:],
                 )
             ][n - 1 :]
-            for compl, out, n in zip(
-                input_ids, outputs, ns
-            )
+            for compl, out, n in zip(input_ids, outputs, ns)
         ]
 
         return completion_ids, scores
@@ -162,11 +129,7 @@ class VLLM(LocalLanguageModel):
     ):
 
         prompt_txt = flatten_list(
-            [
-                [self.get_prompt(**data)]
-                * n
-                for data in input_data
-            ]
+            [[self.get_prompt(**data)] * n for data in input_data]
         )
 
         sampling_params = SamplingParams(
@@ -175,28 +138,20 @@ class VLLM(LocalLanguageModel):
             top_p=top_p,
             min_p=min_p,
             best_of=best_of,
-            use_beam_search=use_beam_search,
+            # use_beam_search=use_beam_search,
             max_tokens=self.max_new_tokens,
             stop=self.stop_tokens,
             include_stop_str_in_output=True,
             skip_special_tokens=self.skip_special_tokens,
         )
 
-        responses = self.model.generate(
-            prompt_txt, sampling_params
-        )
+        responses = self.model.generate(prompt_txt, sampling_params)
 
         completions = []
         for out in responses:
             out_inst = []
-            for i in range(
-                len(out.outputs)
-            ):
-                out_inst.append(
-                    out.outputs[
-                        i
-                    ].text  # .rstrip("\n")
-                )
+            for i in range(len(out.outputs)):
+                out_inst.append(out.outputs[i].text)  # .rstrip("\n")
             completions.extend(out_inst)
 
         completions = unflatten_list(

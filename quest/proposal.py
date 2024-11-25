@@ -11,6 +11,7 @@ from quest.index import (
     Zero,
     Uniform,
 )
+import torch
 from quest.model.base import LanguageModel
 from quest.reward.base import Reward
 from quest.utils.list import (
@@ -22,17 +23,12 @@ from quest.core import Quest
 
 class LLMProposal(Quest.Proposal):
 
-    def __init__(
-        self,
-        model: LanguageModel,
-    ) -> None:
-        super().__init__()
+    def __init__(self, model: LanguageModel, **kwargs) -> None:
+        super().__init__(**kwargs)
 
         self.model = model
 
-    def draw_initial_state(
-        self, prompt
-    ) -> Quest.State:
+    def draw_initial_state(self, prompt) -> Quest.State:
         """
         This function initializes the Markov chain given a prompt.
 
@@ -52,35 +48,28 @@ class LLMProposal(Quest.Proposal):
         - The initial state is added to the stack.
 
         """
-
+        torch.cuda.nvtx.range_push("proposal:generate")
         # Generate the initial completion and transition scores
-        completions, transition_scores = (
-            self.model.continuation(
-                prompt,
-                prefix=None,
-            )
+        completions, transition_scores = self.model.continuation(
+            prompt,
+            prefix=None,
         )
 
         # Decode the completion text
-        completions_text = (
-            self.model.decode_tokenize(
-                completions
-            )
-        )
-
+        completions_text = self.model.decode_tokenize(completions)
+        torch.cuda.nvtx.range_pop()
+        torch.cuda.nvtx.range_push("proposal:compute_reward")
         state = Quest.State(
-            reward=None,
+            reward=self.compute_reward(completions_text),
             transition_scores=transition_scores,
             completion=completions,
             text=completions_text,
             index=[0] * len(completions),
         )
-
+        torch.cuda.nvtx.range_pop()
         return state
 
-    def bootstrap_initial_state(
-        self, prompt, samples: List[str]
-    ) -> Quest.State:
+    def bootstrap_initial_state(self, prompt, samples: List[str]) -> Quest.State:
         """
         Bootstrap the initial state for the Markov chain. Setting specific samples as the start of the markov chain.
 
@@ -92,29 +81,28 @@ class LLMProposal(Quest.Proposal):
             State: The initial state for the Markov chain.
 
         """
-        self.samples = copy.deepcopy(
-            samples
-        )
-        completions_text = [
-            s[-1] for s in self.samples
-        ]  # list of samples.
+        self.samples = copy.deepcopy(samples)
+        completions_text = [s[-1] for s in self.samples]  # list of samples.
 
-        completions, transition_scores = (
-            self.model.evaluate_continuation(
-                prompt,
-                completions_text,
-            )
+        torch.cuda.nvtx.range_push("proposal:generate")
+        completions, transition_scores = self.model.evaluate_continuation(
+            prompt,
+            completions_text,
         )
+        torch.cuda.nvtx.range_pop()
+
+        torch.cuda.nvtx.range_push("proposal:compute_reward")
 
         # Create the initial state for the Markov chain
         state = Quest.State(
-            reward=None,
+            reward=self.compute_reward(completions_text),
             transition_scores=transition_scores,
             completion=completions,
             text=completions_text,
             index=[0] * len(completions),
         )
 
+        torch.cuda.nvtx.range_pop()
         return state
 
     def get_prompt(
@@ -158,10 +146,7 @@ class LLMProposal(Quest.Proposal):
                     proposal_state.index,
                     previous_state.index,
                 )
-                if (
-                    proposal_state.index
-                    is not None
-                )
+                if (proposal_state.index is not None)
                 else None
             ),
             t=proposal_state.t,
@@ -176,8 +161,9 @@ class SuffixProposal(LLMProposal):
         self,
         model: LanguageModel,
         dist: IndexDistribution = Uniform(),
+        **kwargs,
     ):
-        super().__init__(model=model)
+        super().__init__(model=model, **kwargs)
         self.dist = dist
 
     def transition_likelihood_ratio(
@@ -250,20 +236,15 @@ class SuffixProposal(LLMProposal):
 
         # Calculate the log likelihood ratios for the indices and rewards
         log_likelihood_backward = (
-            index_log_likelihood_backward
-            + proposal_log_likelihood_backward
+            index_log_likelihood_backward + proposal_log_likelihood_backward
         )
 
         log_likelihood_forward = (
-            index_log_likelihood_forward
-            + proposal_log_likelihood_forward
+            index_log_likelihood_forward + proposal_log_likelihood_forward
         )
 
         # Calculate the log transition ratio
-        log_transition_ratio = (
-            log_likelihood_backward
-            - log_likelihood_forward
-        )
+        log_transition_ratio = log_likelihood_backward - log_likelihood_forward
 
         return log_transition_ratio
 
@@ -273,9 +254,7 @@ class SuffixProposal(LLMProposal):
         prompt: List[List[int]],
     ):
 
-        completions = (
-            previous_state.completion
-        )
+        completions = previous_state.completion
 
         indeces = [
             self.dist.sample(
@@ -328,10 +307,8 @@ class SuffixProposal(LLMProposal):
             )
         )
 
-        proposal_text = (
-            self.model.decode_tokenize(
-                proposal,
-            )
+        proposal_text = self.model.decode_tokenize(
+            proposal,
         )
 
         proposal_state = Quest.State(
@@ -412,12 +389,178 @@ class RLHFSuffixProposal(SuffixProposal):
         )
 
         # Calculate the log transition ratio
-        log_transition_ratio = (
-            log_likelihood_backward
-            - log_likelihood_forward
-        )
+        log_transition_ratio = log_likelihood_backward - log_likelihood_forward
 
         return log_transition_ratio
+
+
+class JointRLHFSuffixProposal(SuffixProposal):
+
+    def __init__(
+        self,
+        **kwargs,
+    ):
+        super().__init__(**kwargs, reward=None)
+
+    def transition_and_evaluation(
+        self, previous_state, prompt: List[List[int]]  # , uncomplete_indices: List[int]
+    ):
+
+        torch.cuda.nvtx.range_push("proposal:generate_and_reward")
+        proposal_state = self.transition(previous_state, prompt)
+        torch.cuda.nvtx.range_pop()
+
+        return proposal_state
+
+    def transition(
+        self,
+        previous_state: Quest.State,
+        prompt: List[List[int]],
+    ):
+
+        completions = previous_state.completion
+
+        indeces = [
+            self.dist.sample(
+                truncation=len(completion),
+                # t=previous_state.t,
+            )
+            for completion in completions
+        ]
+
+        prefix = [
+            completion[:index]
+            for completion, index in zip(
+                completions,
+                indeces,
+            )
+        ]
+
+        prefix_scores = [
+            scores[:index]
+            for scores, index in zip(
+                previous_state.transition_scores,
+                indeces,
+            )
+        ]
+
+        (
+            continuation_proposal,
+            rewards,
+            continuation_transition_scores,
+        ) = self.model.continuation(
+            prompt,
+            prefix,
+        )  ## add mask here -
+
+        proposal = list(
+            map(
+                lambda x: x[0] + x[1],
+                zip(
+                    prefix,
+                    continuation_proposal,
+                ),
+            )
+        )
+        proposal_transition_scores = list(
+            map(
+                lambda x: x[0] + x[1],
+                zip(
+                    prefix_scores,
+                    continuation_transition_scores,
+                ),
+            )
+        )
+
+        proposal_text = self.model.decode_tokenize(
+            proposal,
+        )
+
+        proposal_state = Quest.State(
+            completion=proposal,
+            reward=rewards,
+            transition_scores=proposal_transition_scores,
+            text=proposal_text,
+            index=indeces,
+            t=previous_state.t + 1,
+        )
+
+        return proposal_state
+
+    def draw_initial_state(self, prompt) -> Quest.State:
+        """
+        This function initializes the Markov chain given a prompt.
+
+        Parameters:
+        prompt (str): The prompt to initialize the Markov chain.
+
+        Returns:
+        State: The initial state of the Markov chain.
+
+        Notes:
+        - The Markov chain is initialized by generating the initial completion and transition scores.
+        - The completion text is decoded from the generated completions.
+        - The reward for the initial completion is computed.
+        - The initial state for the Markov chain is created using the computed reward, transition scores,
+          completions, completion text, and index.
+        - The completion text is stored in the samples list for each index.
+        - The initial state is added to the stack.
+
+        """
+        torch.cuda.nvtx.range_push("proposal:generate")
+        # Generate the initial completion and transition scores
+        completions, rewards, transition_scores = self.model.continuation(
+            prompt,
+            prefix=None,
+        )
+
+        # Decode the completion text
+        completions_text = self.model.decode_tokenize(completions)
+        torch.cuda.nvtx.range_pop()
+        torch.cuda.nvtx.range_push("proposal:compute_reward")
+        state = Quest.State(
+            reward=rewards,
+            transition_scores=transition_scores,
+            completion=completions,
+            text=completions_text,
+            index=[0] * len(completions),
+        )
+        torch.cuda.nvtx.range_pop()
+        return state
+
+    def bootstrap_initial_state(self, prompt, samples: List[str]) -> Quest.State:
+        """
+        Bootstrap the initial state for the Markov chain. Setting specific samples as the start of the markov chain.
+
+        Args:
+            prompt (str): The prompt text.
+            samples (list): List of samples.
+
+        Returns:
+            State: The initial state for the Markov chain.
+
+        """
+        self.samples = copy.deepcopy(samples)
+        completions_text = [s[-1] for s in self.samples]  # list of samples.
+
+        completions, rewards, transition_scores = self.model.evaluate_continuation(
+            prompt,
+            completions_text,
+        )
+
+        torch.cuda.nvtx.range_push("proposal:compute_reward")
+
+        # Create the initial state for the Markov chain
+        state = Quest.State(
+            reward=rewards,
+            transition_scores=transition_scores,
+            completion=completions,
+            text=completions_text,
+            index=[0] * len(completions),
+        )
+
+        torch.cuda.nvtx.range_pop()
+        return state
 
 
 BaseTransitionPrompt = PromptTemplate.from_template(
@@ -432,9 +575,7 @@ class FancyProposal(LLMProposal):
         transition_func,
         **kwargs,
     ):
-        self.transition_func = (
-            transition_func
-        )
+        self.transition_func = transition_func
 
         super().__init__(**kwargs)
 
@@ -443,15 +584,9 @@ class FancyProposal(LLMProposal):
         input_data: List[Dict[str, str]],
     ):
 
-        prompt_txt = [
-            self.model.get_prompt(**data)
-            for data in input_data
-        ]
+        prompt_txt = [self.model.get_prompt(**data) for data in input_data]
 
-        fstrings = [
-            data["chat_template_prompt"]
-            for data in input_data
-        ]
+        fstrings = [data["chat_template_prompt"] for data in input_data]
 
         return (prompt_txt, fstrings)
 
@@ -482,11 +617,7 @@ class FancyProposal(LLMProposal):
             )
         ]
 
-        forward_context_tokens = (
-            self.model.tokenize(
-                forward_context
-            )
-        )
+        forward_context_tokens = self.model.tokenize(forward_context)
 
         (
             proposal,
@@ -496,11 +627,7 @@ class FancyProposal(LLMProposal):
             prefix=None,
         )
 
-        proposal_text = (
-            self.model.decode_tokenize(
-                proposal
-            )
-        )
+        proposal_text = self.model.decode_tokenize(proposal)
 
         proposal_state = Quest.State(
             completion=proposal,
@@ -536,17 +663,11 @@ class FancyProposal(LLMProposal):
             )
         ]
 
-        backward_context_tokens = (
-            self.model.tokenize(
-                backward_context
-            )
-        )
+        backward_context_tokens = self.model.tokenize(backward_context)
 
-        _, backward_transition_scores = (
-            self.model.evaluate_continuation(
-                backward_context_tokens,
-                previous_state.text,
-            )
+        _, backward_transition_scores = self.model.evaluate_continuation(
+            backward_context_tokens,
+            previous_state.text,
         )
 
         log_likelihood_forward = np.array(
@@ -570,47 +691,31 @@ class FancyProposal(LLMProposal):
         ## TODO I should do a log ratio of the LM base generation as well ..
 
         # Calculate the log transition ratio
-        log_transition_ratio = (
-            log_likelihood_backward
-            - log_likelihood_forward
-        )
+        log_transition_ratio = log_likelihood_backward - log_likelihood_forward
 
         return log_transition_ratio
 
-    def draw_initial_state(
-        self, prompt
-    ) -> Quest.State:
+    def draw_initial_state(self, prompt) -> Quest.State:
 
         prompt, _ = prompt
 
-        state = super().draw_initial_state(
-            self.model.tokenize(prompt)
-        )
+        state = super().draw_initial_state(self.model.tokenize(prompt))
 
-        self.starting_output = [
-            o.split(" ")[0]
-            for o in state.text
-        ]
+        self.starting_output = [o.split(" ")[0] for o in state.text]
 
         return state
 
-    def bootstrap_initial_state(
-        self, prompt, samples: List[str]
-    ) -> Quest.State:
+    def bootstrap_initial_state(self, prompt, samples: List[str]) -> Quest.State:
 
         prompt, fstrings = prompt
 
-        return (
-            super().bootstrap_initial_state(
-                self.mode.tokenize(prompt),
-                samples,
-            )
+        return super().bootstrap_initial_state(
+            self.mode.tokenize(prompt),
+            samples,
         )
 
 
-class AlwaysAcceptFancyProposal(
-    FancyProposal
-):
+class AlwaysAcceptFancyProposal(FancyProposal):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -623,6 +728,4 @@ class AlwaysAcceptFancyProposal(
 
         prompt, fstrings = prompt
 
-        return np.zeros(
-            (len(prompt),), dtype=np.float32
-        )
+        return np.zeros((len(prompt),), dtype=np.float32)

@@ -11,5 +11,6 @@ from quest.reward.model import (
     RewardModel,
     ContextualRewardModel,
 )
-from quest.reward.mt import QEModel
+
+# from quest.reward.mt import QEModel
 from quest.index import Uniform
