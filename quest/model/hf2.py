@@ -68,7 +68,7 @@ class StoppingCriteriaSub(StoppingCriteria):
             self.stops = self.stops[i]
 
 
-class HF(LocalLanguageModel):
+class HF2(LocalLanguageModel):
 
     def __init__(
         self,

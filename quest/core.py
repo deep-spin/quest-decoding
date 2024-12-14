@@ -293,6 +293,7 @@ class Quest:
             detailed_balance,
             np.ones_like(detailed_balance),
         )
+
         return alpha
 
     def draw_transition(

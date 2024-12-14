@@ -57,6 +57,7 @@ class Punica(LocalLanguageModel):
         dtype=torch.float16,
         request_type="joint",
         lora_name="proposal",
+        batch_size=16,
         **kwargs,
     ):
 
@@ -96,6 +97,7 @@ class Punica(LocalLanguageModel):
                 download_dir=download_dir,
                 maxlen=max_new_tokens + max_prompt_length,
                 load_value_head=load_value_head,
+                batch_size=batch_size,
             )
 
             ACTIVE_SERVERS[ideal_match_server] = self.engine
@@ -166,6 +168,7 @@ class PunicaSIMM(Punica):
         download_dir="/tmp/",
         seed=0,
         dtype=torch.float16,
+        batch_size=16,
         **kwargs,
     ):
 
@@ -186,10 +189,12 @@ class PunicaSIMM(Punica):
                 "proposal": proposal_path,
             },
             request_type="joint",
+            batch_size=batch_size,
         )
 
 
 class PunicaSISM(Punica):
+
     def __init__(
         self,
         proposal_path: str,
@@ -204,6 +209,7 @@ class PunicaSISM(Punica):
         seed=0,
         # use_flash_attention_2=True,
         dtype=torch.float16,
+        batch_size=16,
         **kwargs,
     ):
 
@@ -222,10 +228,12 @@ class PunicaSISM(Punica):
             seed=seed,
             dtype=dtype,
             request_type="text",
+            batch_size=batch_size,
         )
 
 
 class PunicaR(Punica):
+
     def __init__(
         self,
         reward_path: str,
@@ -237,6 +245,7 @@ class PunicaR(Punica):
         download_dir="/tmp/",
         seed=0,
         dtype=torch.float16,
+        batch_size=16,
         **kwargs,
     ):
 
@@ -254,6 +263,7 @@ class PunicaR(Punica):
             dtype=dtype,
             request_type="reward",
             lora_name="reward",
+            batch_size=batch_size,
         )
 
 
@@ -292,6 +302,7 @@ class ContextualPunicaModel(Reward):
         download_dir="/tmp/",
         seed=0,
         clamp: float = 40,
+        batch_size=16,
         **kwargs,
     ):
 
@@ -307,6 +318,7 @@ class ContextualPunicaModel(Reward):
             download_dir=download_dir,
             seed=seed,
             dtype=dtype,
+            batch_size=batch_size,
             **kwargs,
         )
 
