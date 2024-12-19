@@ -29,7 +29,7 @@ from quest.proposal import JointRLHFSuffixProposal, RLHFSuffixProposal
 from quest.core import Quest
 import numpy as np
 
-from punica.misc.base import MultiLoraInference
+from punica.misc.base import c
 
 # from punica.misc.text import MultiLoraInferenceText
 from typing import List
