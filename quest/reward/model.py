@@ -1,5 +1,6 @@
 from typing import List
 from quest.reward.base import Reward
+import gc
 
 from transformers import pipeline
 from quest.utils.logger import fix_loggers
@@ -99,15 +100,15 @@ class RewardModel(Reward):
             # device_map="auto",
         )
 
-        self.device = torch.device(
-            f"cuda:{self.device}" if torch.cuda.is_available() else "cpu"
-        )
-
         if device_count > 1:
 
             self.model = nn.DataParallel(
-                self.model, device_ids=list(range(device_count))
+                self.model, device_ids=(np.arange(device_count) + self.device).tolist()
             )
+
+        self.device = torch.device(
+            f"cuda:{self.device}" if torch.cuda.is_available() else "cpu"
+        )
 
         self.model.to(self.device)
         self.model.eval()
@@ -155,6 +156,10 @@ class RewardModel(Reward):
                     -self.clamp,
                     self.clamp,
                 ).tolist()
+
+                del outputs, input_ids, attention_mask
+                gc.collect()
+                torch.cuda.empty_cache()
 
                 rewards.extend(logits)
 
@@ -354,15 +359,15 @@ class ValueHead(Reward):
             vhead_params["v_head.summary.bias"]
         )
 
-        self.device = torch.device(
-            f"cuda:{self.device}" if torch.cuda.is_available() else "cpu"
-        )
-
         if device_count > 1:
 
             self.model = nn.DataParallel(
-                self.model, device_ids=list(range(device_count))
+                self.model, device_ids=(np.arange(device_count) + self.device).tolist()
             )
+
+        self.device = torch.device(
+            f"cuda:{self.device}" if torch.cuda.is_available() else "cpu"
+        )
 
         self.model.to(self.device)
         self.model.eval()

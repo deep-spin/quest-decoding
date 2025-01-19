@@ -12,6 +12,13 @@ from quest.utils.list import (
     flatten_list,
     unflatten_list,
 )
+from typing import List, Optional, Any
+import requests
+from langchain.prompts import PromptTemplate
+from quest.model.base import LocalLanguageModel
+import numpy as np
+import json
+import time
 
 
 class VLLM(LocalLanguageModel):
@@ -24,7 +31,7 @@ class VLLM(LocalLanguageModel):
         stop_tokens=["</s>"],  # ["\n"],
         temperature=1.0,
         skip_special_tokens=False,
-        **llm_kwargs
+        **llm_kwargs,
     ):
         super().__init__(
             model_path=model_path,

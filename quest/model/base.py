@@ -159,8 +159,7 @@ class LocalLanguageModel(LanguageModel):
             for p in prompt
         ]
 
-    def decode_tokenize(self, ids):
+    def decode_tokenize(self, ids, **kwargs):
         return self.tokenizer.batch_decode(
-            ids,
-            skip_special_tokens=self.skip_special_tokens,
+            ids, skip_special_tokens=self.skip_special_tokens, **kwargs
         )
