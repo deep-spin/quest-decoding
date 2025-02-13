@@ -160,6 +160,8 @@ class LocalLanguageModel(LanguageModel):
         ]
 
     def decode_tokenize(self, ids, **kwargs):
-        return self.tokenizer.batch_decode(
-            ids, skip_special_tokens=self.skip_special_tokens, **kwargs
-        )
+
+        if "skip_special_tokens " not in kwargs:
+            kwargs["skip_special_tokens "] = self.skip_special_tokens
+
+        return self.tokenizer.batch_decode(ids, **kwargs)

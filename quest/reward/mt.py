@@ -38,6 +38,11 @@ class CometModel(Reward):
         self.sources = None
         self.references = None
 
+    def set_context(self, context: List[Tuple[str, str]]):
+        self.sources, self.references = zip(*context)
+        self.sources = list(self.sources)
+        self.references = list(self.references)
+
     def set_sources(self, sources: List[str]):
         self.sources = sources
 
@@ -97,6 +102,9 @@ class QEModel(CometModel):
 
     def __init__(self, model_path="Unbabel/wmt22-cometkiwi-da", **kwargs):
         super().__init__(model_path=model_path, **kwargs)
+
+    def set_context(self, context: List[str]):
+        self.sources = context
 
     def make_input(
         self,

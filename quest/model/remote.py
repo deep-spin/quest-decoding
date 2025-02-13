@@ -4,10 +4,8 @@ from quest.model.base import (
 )
 
 
-from quest.utils.list import (
-    flatten_list,
-    unflatten_list,
-)
+from quest.utils.list import flatten_list, unflatten_list, split_into_groups
+from quest.utils.http import async_wrapper
 from typing import List, Optional, Any
 import requests
 from langchain.prompts import PromptTemplate
@@ -15,6 +13,8 @@ from quest.model.base import LocalLanguageModel
 import numpy as np
 import json
 import time
+from literegistry import RegistryHTTPClient
+import asyncio
 
 
 class RemoteVLLM(LocalLanguageModel):
@@ -30,6 +30,7 @@ class RemoteVLLM(LocalLanguageModel):
         skip_special_tokens: bool = False,
         timeout: float = 300,
         max_retries: int = 50,
+        batch_size=32,
         **llm_kwargs,
     ):
         super().__init__(
@@ -42,24 +43,47 @@ class RemoteVLLM(LocalLanguageModel):
             skip_special_tokens=skip_special_tokens,
         )
 
-        try:
-            self.server_url = registry.get(model_path).rstrip("/")
-        except:
-            self.server_url = "http://localhost:8000"
+        self.http_client = RegistryHTTPClient(
+            registry=registry,
+            value=model_path,
+            max_parallel_requests=batch_size,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
+        self.value = model_path
+        self.batch_size = batch_size
 
-        self.timeout = timeout
-        self.session = requests.Session()
-        self.max_retries = max_retries
         self.registry = registry
 
         # Test connection and get model info
-        self._check_health()
+        asyncio.run(self._check_health())
 
-    def _check_health(self):
+    async def _check_health(self):
         """Check if the server is healthy."""
         try:
-            response = self.session.get(f"{self.server_url}/health")
-            response.raise_for_status()
+
+            async with self.http_client as client:
+                # server_url = self.registry.get(self.model_path).rstrip("/")
+                response = await client.get("v1/models")
+                # response = self.session.get(f"{self.server_url}/health")
+                # response.raise_for_status()
+
+            print(f"Server {self.value} is healthy and ready for requests.")
+            return True
+        except Exception as e:
+            raise ConnectionError(f"Server health check failed: {str(e)}")
+
+    async def _check_health(self):
+        """Check if the server is healthy."""
+        try:
+
+            async with self.http_client as client:
+                # server_url = self.registry.get(self.model_path).rstrip("/")
+                response = await client.get("v1/models")
+                # response = self.session.get(f"{self.server_url}/health")
+                # response.raise_for_status()
+
+            print(f"Server {self.value} is healthy and ready for requests.")
             return True
         except Exception as e:
             raise ConnectionError(f"Server health check failed: {str(e)}")
@@ -71,34 +95,54 @@ class RemoteVLLM(LocalLanguageModel):
         else:
             input_data = [x[0] + x[1] for x in zip(prompt, prefix)]
 
-            # print(input_data)
+            ninput = []
+            for x in input_data:
+                nx = len(x)
+                if nx > self.max_prompt_length:
+                    ninput.append(x[nx - self.max_prompt_length :])
+                else:
+                    ninput.append(x)
+
+            input_data = ninput
 
         prompt_text = self.decode_tokenize(
-            input_data, include_special_tokens=True, spaces_between_special_tokens=False
+            input_data, skip_special_tokens=False, spaces_between_special_tokens=False
         )
 
-        print("--" * 20)
-        print(max(map(len, input_data)))
-
-        len_of_min = min(map(len, input_data))
-        discount = min(self.max_prompt_length - len_of_min, 0)
         # print(prompt_text)
         # Prepare request payload
-        payload = {
-            "model": self.model_path,
-            "prompt": prompt_text,
-            "temperature": self.temperature,
-            "logprobs": 1,
-            "max_tokens": self.max_new_tokens - discount,
-            "stop": self.stop_tokens,
-            # "include_stop_str_in_output": True,
-            # "skip_special_tokens": self.skip_special_tokens,
-            # "spaces_between_special_tokens": False,
-        }
+        payload = [
+            {
+                "model": self.model_path,
+                "prompt": p,
+                "temperature": self.temperature,
+                "logprobs": 1,
+                "max_tokens": self.max_new_tokens,
+                "stop": self.stop_tokens,
+                # "include_stop_str_in_output": True,
+                # "skip_special_tokens": self.skip_special_tokens,
+                # "spaces_between_special_tokens": False,
+            }
+            for p in split_into_groups(prompt_text, self.batch_size)
+        ]
 
         # Make request to vLLM server
-        response = self._make_request(endpoint="v1/completions", payload=payload)
+        results = asyncio.run(
+            self._make_request(endpoint="v1/completions", payload=payload)
+        )
         # response = requests.post(f"{self.server_url}/generate", json=payload)
+
+        completions = [
+            choice["text"] + self.tokenizer.eos_token
+            for result in results
+            for choice in result["choices"]
+        ]
+
+        logprobs = [
+            choice["logprobs"]["token_logprobs"]
+            for result in results
+            for choice in result["choices"]
+        ]
 
         """
         outputs = response["outputs"]
@@ -107,26 +151,7 @@ class RemoteVLLM(LocalLanguageModel):
         scores = [[logprob for logprob in out["logprobs"]] for out in outputs]
         """
         # Get the choices from the response
-        outputs = response["choices"]
-
-        # Extract completions and logprobs
-        completions = []
-        logprobs = []
-        scores = []
-
-        # space_token = "Ġ"
-
-        for choice in outputs:
-
-            if "logprobs" in choice:
-                # Extract token ids if available
-
-                completions.append(
-                    choice["text"] + self.tokenizer.eos_token
-                )  # fallback to text if no token_ids
-
-                # Extract the log probabilities
-                logprobs.append(choice["logprobs"]["token_logprobs"])
+        # outputs = response["choices"]
 
         completion_ids = [xi[1:] for xi in self.tokenize(completions)]
 
@@ -159,58 +184,38 @@ class RemoteVLLM(LocalLanguageModel):
         Raises:
             RuntimeError: If all retry attempts fail
         """
-        attempt = 0
-        last_exception = None
 
         # Prepare prompts
         prompts = [self.get_prompt(**data) for data in input_data] * n
 
-        payload = {
-            "model": self.model_path,
-            "prompt": prompts,
-            "max_tokens": self.max_new_tokens,
-            "temperature": self.temperature,
-            # "top_p": top_p,
-            "n": 1,  # We handle multiple generations through prompt repetition
-            "stop": self.stop_tokens,
-            # "best_of": best_of if best_of is not None else 1,
-        }
+        payload = [
+            {
+                "model": self.model_path,
+                "prompt": p,  # "say hi",  # prompts,
+                "max_tokens": self.max_new_tokens,
+                "temperature": self.temperature,
+                # "top_p": top_p,
+                "n": 1,  # We handle multiple generations through prompt repetition
+                # "stop": self.stop_tokens,
+                # "best_of": best_of if best_of is not None else 1,
+            }
+            for p in split_into_groups(prompts, self.batch_size)
+        ]
 
-        result = self._make_request("v1/completions", payload)
+        results = asyncio.run(self._make_request("v1/completions", payload))
 
-        completions = [choice["text"] for choice in result["choices"]]
+        completions = [
+            choice["text"] for result in results for choice in result["choices"]
+        ]
         # Reshape the completions according to n
         return unflatten_list(completions, [n] * len(input_data))
 
-    def _make_request(self, endpoint: str, payload: dict):
-        """Generic request handler with retry logic"""
-        attempt = 0
-        last_exception = None
-        self.server_url = self.registry.get(self.model_path).rstrip("/")
+    async def _make_request(self, endpoint: str, payload: dict):
 
-        while attempt < self.max_retries:
-            try:
-                response = self.session.post(
-                    f"{self.server_url}/{endpoint}",
-                    json=payload,
-                    timeout=self.timeout,
-                )
-                response.raise_for_status()
-                return response.json()
-            except (requests.RequestException, ConnectionError) as e:
-                attempt += 1
-                last_exception = e
-                self.server_url = self.registry.get(self.model_path).rstrip("/")
+        async with self.http_client as client:
+            # server_url = self.registry.get(self.model_path).rstrip("/")
+            response = await client.post("v1/completions", payload)
+            # response = self.session.get(f"{self.server_url}/health")
+            # response.raise_for_status()
 
-                print(f"Attempt {attempt} failed: {str(e)}->")
-                if attempt >= self.max_retries:
-                    raise RuntimeError(
-                        f"Failed to complete request after {self.max_retries} attempts. "
-                        f"Last error: {str(last_exception)}"
-                    ) from last_exception
-
-                # Exponential backoff
-                time.sleep(min(2**attempt, 60))
-                continue
-
-        raise RuntimeError("Unexpected end of retry loop")
+        return response

@@ -4,6 +4,10 @@ from typing import List, Optional, Union
 
 from quest.reward.base import Reward
 from tqdm import tqdm
+from literegistry import RegistryHTTPClient
+import asyncio
+
+from quest.utils.list import split_into_groups
 
 
 class RemoteReward(Reward):
@@ -16,6 +20,7 @@ class RemoteReward(Reward):
         timeout: float = 300,  # 5 minutes default timeout
         reward_type: str = "contextual",
         batch_size=32,
+        max_parallel_requests=32,
     ):
         """
         Client for interacting with the Reward Model Server.
@@ -41,34 +46,45 @@ class RemoteReward(Reward):
             super().__init__(f"crm:{model_path}")
         elif reward_type == "value":
             super().__init__(f"vh:{model_path}")
+        elif reward_type == "qe":
+            super().__init__(f"qe:{model_path}")
         else:
             super().__init__(f"rm:{model_path}")
 
         self.max_retries = max_retries
         self.polling_interval = polling_interval
         self.timeout = timeout
-        self.session = requests.Session()
+        self.http_client = RegistryHTTPClient(
+            registry=registry,
+            value=model_path,
+            max_parallel_requests=max_parallel_requests,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
+        # self.session = requests.Session()
         self._context = None  # Store context as instance variable
         self.registry = registry
         self.model_path = model_path
-        self.base_url = self.get_new_url()
+        # self.base_url = self.get_new_url()
         self.batch_size = batch_size
+        self.max_parallel_requests = max_parallel_requests
+        # Test connection and get model info
+        asyncio.run(self._check_health())
 
-    def get_new_url(self):
-        url = self.registry.get(self.model_path).rstrip("/")
-        return url
+    async def _check_health(self):
+        """Check if the server is healthy."""
+        try:
 
-    def health_check(self) -> dict:
-        """Check server health status."""
-        response = self.session.get(f"{self.base_url}/health")
-        response.raise_for_status()
-        return response.json()
+            async with self.http_client as client:
+                # server_url = self.registry.get(self.model_path).rstrip("/")
+                response = await client.get("health")
+                # response = self.session.get(f"{self.server_url}/health")
+                # response.raise_for_status()
 
-    def get_queue_size(self) -> int:
-        """Get current queue size."""
-        response = self.session.get(f"{self.base_url}/queue_size")
-        response.raise_for_status()
-        return response.json()["queue_size"]
+            print(f"Server {self.model_path} is healthy and ready for requests.")
+            return True
+        except Exception as e:
+            raise ConnectionError(f"Server health check failed: {str(e)}")
 
     def set_context(self, context: List[str]):
         """Set the default context for all evaluations."""
@@ -78,9 +94,9 @@ class RemoteReward(Reward):
         """Get the current default context."""
         return self._context
 
-    def _evaluate(
+    async def _evaluate(
         self,
-        candidates: List[str],
+        payload,
     ) -> List[float]:
         """
         Submit texts for evaluation with retry logic.
@@ -97,66 +113,68 @@ class RemoteReward(Reward):
             RuntimeError: If all retry attempts fail
             TimeoutError: If evaluation times out
         """
-        start_time = time.time()
-        attempt = 0
-        last_exception = None
-        self.base_url = self.get_new_url()
+        async with self.http_client as client:
+            results = await client.post("evaluate", payload)
 
-        while attempt < self.max_retries:
-            try:
-                # Submit evaluation request
-                payload = {"texts": candidates}
-                if self._context is not None:
-                    payload["context"] = self._context
+        rewards = [r for result in results for r in result["rewards"]]
 
-                response = self.session.post(f"{self.base_url}/evaluate", json=payload)
-                response.raise_for_status()
-                task_id = response.json()["task_id"]
+        return rewards
 
-                # Poll for results with retry logic
-                while time.time() - start_time < self.timeout:
-                    try:
-                        response = self.session.get(f"{self.base_url}/task/{task_id}")
-                        response.raise_for_status()
-                        result = response.json()
+    """ try:
+                    # Submit evaluation request
+                    payload = {"texts": candidates}
+                    if self._context is not None:
+                        payload["context"] = self._context
 
-                        if result["status"] == "completed":
-                            return result["rewards"]
-                        elif result["status"] == "failed":
-                            raise RuntimeError(
-                                f"Task failed: {result.get('error', 'Unknown error')}"
-                            )
+                    response = self.session.post(f"{self.base_url}/evaluate", json=payload)
+                    response.raise_for_status()
+                    task_id = response.json()["task_id"]
 
-                        time.sleep(self.polling_interval)
+                    # Poll for results with retry logic
+                    while time.time() - start_time < self.timeout:
+                        try:
+                            response = self.session.get(f"{self.base_url}/task/{task_id}")
+                            response.raise_for_status()
+                            result = response.json()
 
-                    except (requests.RequestException, ConnectionError) as e:
-                        # Connection error during polling - try new server
-                        self.base_url = self.get_new_url()
-                        last_exception = e
-                        continue
+                            if result["status"] == "completed":
+                                return result["rewards"]
+                            elif result["status"] == "failed":
+                                raise RuntimeError(
+                                    f"Task failed: {result.get('error', 'Unknown error')}"
+                                )
 
-                raise TimeoutError(f"Evaluation timed out after {self.timeout} seconds")
+                            time.sleep(self.polling_interval)
 
-            except (requests.RequestException, ConnectionError) as e:
-                # Connection error during submission - try new server
-                attempt += 1
-                last_exception = e
-                self.base_url = self.get_new_url()
+                        except (requests.RequestException, ConnectionError) as e:
+                            # Connection error during polling - try new server
+                            self.base_url = self.get_new_url()
+                            last_exception = e
+                            continue
 
-                if attempt >= self.max_retries:
-                    raise RuntimeError(
-                        f"Failed to evaluate after {self.max_retries} attempts. "
-                        f"Last error: {str(last_exception)}"
-                    ) from last_exception
+                    raise TimeoutError(f"Evaluation timed out after {self.timeout} seconds")
 
-                # Add exponential backoff between retries
-                time.sleep(min(2**attempt, 30))  # Cap at 30 seconds
-                continue
+                except (requests.RequestException, ConnectionError) as e:
+                    # Connection error during submission - try new server
+                    attempt += 1
+                    last_exception = e
+                    self.base_url = self.get_new_url()
 
-        # This should never be reached due to the raise in the loop above
-        raise RuntimeError("Unexpected end of retry loop")
+                    if attempt >= self.max_retries:
+                        raise RuntimeError(
+                            f"Failed to evaluate after {self.max_retries} attempts. "
+                            f"Last error: {str(last_exception)}"
+                        ) from last_exception
 
-    def evaluate(self, candidates, use_tqdm=False, **kwargs):
+                    # Add exponential backoff between retries
+                    time.sleep(min(2**attempt, 30))  # Cap at 30 seconds
+                    continue
+
+            # This should never be reached due to the raise in the loop above
+            raise RuntimeError("Unexpected end of retry loop")
+    """
+
+    def evaluate(self, candidates, use_tqdm=True, **kwargs):
 
         # break candidates into batches
         batches_data = [
@@ -179,8 +197,21 @@ class RemoteReward(Reward):
 
         results = []
         for batch, context in batches:
-            self.set_context(context)
-            results.extend(self._evaluate(batch))
+            # self.set_context(context)
+            # results.extend(self._evaluate(batch))
+
+            individual = [{"texts": t, "context": c} for t, c in zip(batch, context)]
+
+            payload = [
+                {
+                    "texts": [p["texts"] for p in packed],
+                    "context": [p["context"] for p in packed],
+                }
+                for packed in split_into_groups(individual, self.max_parallel_requests)
+            ]
+
+            results.extend(asyncio.run(self._evaluate(payload)))
+
             # print(f"Evaluated {len(results)} samples")
 
         return results
