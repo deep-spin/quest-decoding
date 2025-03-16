@@ -90,3 +90,11 @@ def split_into_groups(lst, batch_size=8):
         start = end
 
     return result
+
+
+from itertools import islice
+
+
+def chunked(iterator, size):
+    iterator = iter(iterator)
+    return iter(lambda: list(islice(iterator, size)), [])

@@ -359,8 +359,9 @@ class ValueHead(Reward):
             vhead_params["v_head.summary.bias"]
         )
 
+        print("Device COUNT:", device_count)
         if device_count > 1:
-
+            # self.model = self.model.to(self.device)
             self.model = nn.DataParallel(
                 self.model, device_ids=(np.arange(device_count) + self.device).tolist()
             )
@@ -369,7 +370,8 @@ class ValueHead(Reward):
             f"cuda:{self.device}" if torch.cuda.is_available() else "cpu"
         )
 
-        self.model.to(self.device)
+        self.model.to(device)
+        # self.model.to(self.device)
         self.model.eval()
 
         self.prompt_txt = None
@@ -414,6 +416,8 @@ class ValueHead(Reward):
                 # self.tokenizer.decode(batch["input_ids"][0][875:])
                 input_ids = batch["input_ids"].to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
+
+                # print(input_ids.shape)
 
                 logits, _, values = self.model(
                     input_ids=input_ids,

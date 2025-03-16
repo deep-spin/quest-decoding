@@ -4,7 +4,7 @@ from quest.model.base import (
 )
 
 
-from quest.utils.list import flatten_list, unflatten_list, split_into_groups
+from quest.utils.list import flatten_list, unflatten_list, split_into_groups, chunked
 from quest.utils.http import async_wrapper
 from typing import List, Optional, Any
 import requests
@@ -18,6 +18,7 @@ import asyncio
 
 
 class RemoteVLLM(LocalLanguageModel):
+
     def __init__(
         self,
         registry,
@@ -30,7 +31,8 @@ class RemoteVLLM(LocalLanguageModel):
         skip_special_tokens: bool = False,
         timeout: float = 300,
         max_retries: int = 50,
-        batch_size=32,
+        batch_size=64,
+        max_parallel_requests=64,
         **llm_kwargs,
     ):
         super().__init__(
@@ -46,7 +48,7 @@ class RemoteVLLM(LocalLanguageModel):
         self.http_client = RegistryHTTPClient(
             registry=registry,
             value=model_path,
-            max_parallel_requests=batch_size,
+            max_parallel_requests=max_parallel_requests,
             timeout=timeout,
             max_retries=max_retries,
         )
@@ -109,6 +111,11 @@ class RemoteVLLM(LocalLanguageModel):
             input_data, skip_special_tokens=False, spaces_between_special_tokens=False
         )
 
+        # self.registry
+        num_servers = len(asyncio.run(self.registry.get_all(self.value)))
+        temp_batch = min(max((len(prompt)) // num_servers, 2), self.batch_size)
+        ## there will be some remainder, but we will just send the remainder to the last server
+
         # print(prompt_text)
         # Prepare request payload
         payload = [
@@ -123,7 +130,7 @@ class RemoteVLLM(LocalLanguageModel):
                 # "skip_special_tokens": self.skip_special_tokens,
                 # "spaces_between_special_tokens": False,
             }
-            for p in split_into_groups(prompt_text, self.batch_size)
+            for p in chunked(prompt_text, temp_batch)
         ]
 
         # Make request to vLLM server
@@ -188,6 +195,9 @@ class RemoteVLLM(LocalLanguageModel):
         # Prepare prompts
         prompts = [self.get_prompt(**data) for data in input_data] * n
 
+        num_servers = len(asyncio.run(self.registry.get_all(self.value)))
+        temp_batch = min(max((len(prompts)) // num_servers, 2), self.batch_size)
+
         payload = [
             {
                 "model": self.model_path,
@@ -199,7 +209,7 @@ class RemoteVLLM(LocalLanguageModel):
                 # "stop": self.stop_tokens,
                 # "best_of": best_of if best_of is not None else 1,
             }
-            for p in split_into_groups(prompts, self.batch_size)
+            for p in chunked(prompts, temp_batch)
         ]
 
         results = asyncio.run(self._make_request("v1/completions", payload))

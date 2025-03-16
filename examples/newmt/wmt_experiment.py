@@ -136,7 +136,7 @@ def main(
     reward_model_checkpoint: str = "Unbabel/XCOMET-XL",  # "Unbabel/wmt23-cometkiwi-da-xl",#Unbabel/XCOMET-XL
     seed: int = 0,
     gpu_memory_utilization=0.6,
-    reward_batch_size=512,  # 1024,
+    reward_batch_size=1024,  # 1024,
     device_count=2,
     reward_device_count=1,
     stop_tokens=[],
@@ -172,6 +172,7 @@ def main(
             "n": min(len(input_data), n),
             "skip_special_tokens": True,
             "dataset": f"graf/WMT{year}-Test",
+            "corrected": 1,
         },
     )
 

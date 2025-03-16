@@ -7,7 +7,7 @@ from tqdm import tqdm
 from literegistry import RegistryHTTPClient
 import asyncio
 
-from quest.utils.list import split_into_groups
+from quest.utils.list import split_into_groups, chunked
 
 
 class RemoteReward(Reward):
@@ -19,8 +19,8 @@ class RemoteReward(Reward):
         polling_interval: float = 0.5,
         timeout: float = 300,  # 5 minutes default timeout
         reward_type: str = "contextual",
-        batch_size=32,
-        max_parallel_requests=32,
+        batch_size=64,
+        max_parallel_requests=64,
     ):
         """
         Client for interacting with the Reward Model Server.
@@ -120,98 +120,23 @@ class RemoteReward(Reward):
 
         return rewards
 
-    """ try:
-                    # Submit evaluation request
-                    payload = {"texts": candidates}
-                    if self._context is not None:
-                        payload["context"] = self._context
-
-                    response = self.session.post(f"{self.base_url}/evaluate", json=payload)
-                    response.raise_for_status()
-                    task_id = response.json()["task_id"]
-
-                    # Poll for results with retry logic
-                    while time.time() - start_time < self.timeout:
-                        try:
-                            response = self.session.get(f"{self.base_url}/task/{task_id}")
-                            response.raise_for_status()
-                            result = response.json()
-
-                            if result["status"] == "completed":
-                                return result["rewards"]
-                            elif result["status"] == "failed":
-                                raise RuntimeError(
-                                    f"Task failed: {result.get('error', 'Unknown error')}"
-                                )
-
-                            time.sleep(self.polling_interval)
-
-                        except (requests.RequestException, ConnectionError) as e:
-                            # Connection error during polling - try new server
-                            self.base_url = self.get_new_url()
-                            last_exception = e
-                            continue
-
-                    raise TimeoutError(f"Evaluation timed out after {self.timeout} seconds")
-
-                except (requests.RequestException, ConnectionError) as e:
-                    # Connection error during submission - try new server
-                    attempt += 1
-                    last_exception = e
-                    self.base_url = self.get_new_url()
-
-                    if attempt >= self.max_retries:
-                        raise RuntimeError(
-                            f"Failed to evaluate after {self.max_retries} attempts. "
-                            f"Last error: {str(last_exception)}"
-                        ) from last_exception
-
-                    # Add exponential backoff between retries
-                    time.sleep(min(2**attempt, 30))  # Cap at 30 seconds
-                    continue
-
-            # This should never be reached due to the raise in the loop above
-            raise RuntimeError("Unexpected end of retry loop")
-    """
-
     def evaluate(self, candidates, use_tqdm=True, **kwargs):
 
-        # break candidates into batches
-        batches_data = [
-            candidates[i : i + self.batch_size]
-            for i in range(0, len(candidates), self.batch_size)
+        num_servers = len(asyncio.run(self.registry.get_all(self.model_path)))
+        temp_batch = min(max((len(candidates)) // num_servers, 2), self.batch_size)
+
+        payloads = [
+            {"texts": t, "context": c} for t, c in zip(candidates, self._context)
         ]
 
-        context_batches = [
-            self._context[i : i + self.batch_size]
-            for i in range(0, len(candidates), self.batch_size)
+        packed_payload = [
+            {
+                "texts": [p["texts"] for p in packed],
+                "context": [p["context"] for p in packed],
+            }
+            for packed in chunked(payloads, temp_batch)
         ]
 
-        batches = zip(
-            batches_data,
-            context_batches,
-        )
-
-        if use_tqdm:
-            batches = tqdm(batches, desc="Evaluating", total=len(batches_data))
-
-        results = []
-        for batch, context in batches:
-            # self.set_context(context)
-            # results.extend(self._evaluate(batch))
-
-            individual = [{"texts": t, "context": c} for t, c in zip(batch, context)]
-
-            payload = [
-                {
-                    "texts": [p["texts"] for p in packed],
-                    "context": [p["context"] for p in packed],
-                }
-                for packed in split_into_groups(individual, self.max_parallel_requests)
-            ]
-
-            results.extend(asyncio.run(self._evaluate(payload)))
-
-            # print(f"Evaluated {len(results)} samples")
+        results = asyncio.run(self._evaluate(packed_payload))
 
         return results
