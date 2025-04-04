@@ -226,7 +226,7 @@ class Quest:
                 self.samples[i].append(t)
 
         else:
-            self.samples = copy.deepcopy(warm_start)
+            # self.samples = copy.deepcopy(warm_start)
 
             state = self.proposal.bootstrap_initial_state(
                 prompt,

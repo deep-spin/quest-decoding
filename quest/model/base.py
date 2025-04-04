@@ -147,13 +147,14 @@ class LocalLanguageModel(LanguageModel):
             )  # THIS IS ACTUALLY REALLY IMPORTANT :) THIS HIDDEN NIGHTMARE DONT USE EOS. - w/ AR models in batch we may have padding in the beginig - obvious reason left to right gen.
             self.tokenizer.pad_token = self.tokenizer.bos_token
 
-    def tokenize(self, prompt):
+    def tokenize(self, prompt, **tokenizer_kwargs):
 
         return [
             self.tokenizer.encode(
                 p,
                 max_length=self.max_prompt_length,
                 truncation=True,
+                **tokenizer_kwargs
                 # return_tensors="np",q
             )
             for p in prompt

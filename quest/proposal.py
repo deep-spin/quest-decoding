@@ -393,6 +393,92 @@ class RLHFSuffixProposal(SuffixProposal):
 
         return log_transition_ratio
 
+    def transition(
+        self,
+        previous_state: Quest.State,
+        prompt: List[List[int]],
+    ):
+
+        completions = previous_state.completion
+
+        indeces = [
+            self.dist.sample(
+                truncation=len(completion),
+                # t=previous_state.t,
+            )
+            for completion in completions
+        ]
+
+        prefix = [
+            completion[:index]
+            for completion, index in zip(
+                completions,
+                indeces,
+            )
+        ]
+
+        (
+            continuation_proposal,
+            _,
+        ) = self.model.continuation(
+            prompt,
+            prefix,
+        )  ## add mask here -
+
+        proposal = list(
+            map(
+                lambda x: x[0] + x[1],
+                zip(
+                    prefix,
+                    continuation_proposal,
+                ),
+            )
+        )
+
+        proposal_text = self.model.decode_tokenize(
+            proposal,
+        )
+
+        proposal_state = Quest.State(
+            completion=proposal,
+            reward=None,
+            transition_scores=[None] * len(proposal),
+            text=proposal_text,
+            index=indeces,
+            t=previous_state.t + 1,
+        )
+
+        return proposal_state
+
+    def bootstrap_initial_state(self, prompt, samples: List[str]) -> Quest.State:
+        """
+        Bootstrap the initial state for the Markov chain. Setting specific samples as the start of the markov chain.
+
+        Args:
+            prompt (str): The prompt text.
+            samples (list): List of samples.
+
+        Returns:
+            State: The initial state for the Markov chain.
+
+        """
+        completions_text = [s["completion"] for s in samples]  # list of samples.
+        completions_reward = [s["reward"] for s in samples]
+
+        completions_w_bos = self.model.tokenize(completions_text)
+        completions = [ids[1:] for ids in completions_w_bos]
+
+        # Create the initial state for the Markov chain
+        state = Quest.State(
+            reward=completions_reward,
+            transition_scores=[None] * len(completions),
+            completion=completions,
+            text=completions_text,
+            index=[0] * len(completions),
+        )
+
+        return state
+
 
 class JointRLHFSuffixProposal(SuffixProposal):
 
