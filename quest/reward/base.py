@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Callable
 import numpy as np
 
 
@@ -18,9 +18,7 @@ class Reward:
         self.name = name
 
     def get_name(self) -> str:
-        return self.name.replace(
-            "/", "-"
-        ).split(".")[0]
+        return self.name.replace("/", "-").split(".")[0]
 
     def evaluate(
         self,
@@ -66,9 +64,7 @@ class ConstantReward(Reward):
 
         """
         self.reward = reward
-        super().__init__(
-            f"constant:{self.reward}"
-        )
+        super().__init__(f"constant:{self.reward}")
 
     def evaluate(
         self,
@@ -89,14 +85,9 @@ class ConstantReward(Reward):
         """
 
         if accepted_indices is None:
-            accepted_indices = list(
-                range(len(candidates))
-            )
+            accepted_indices = list(range(len(candidates)))
 
-        return [
-            self.reward
-            for _ in accepted_indices
-        ]
+        return [self.reward for _ in accepted_indices]
 
     def set_context(self, *args, **kwargs):
         pass
@@ -123,9 +114,7 @@ class BackwardReward(Reward):
 
         """
         self.model = model
-        super().__init__(
-            f"b:{self.model.get_name()}"
-        )
+        super().__init__(f"b:{self.model.get_name()}")
 
     def evaluate(
         self,
@@ -144,12 +133,7 @@ class BackwardReward(Reward):
 
         """
 
-        return [
-            -s
-            for s in self.model.evaluate(
-                candidates, **kwargs
-            )
-        ]
+        return [-s for s in self.model.evaluate(candidates, **kwargs)]
 
 
 class RewardMix(Reward):
@@ -160,18 +144,14 @@ class RewardMix(Reward):
     ):
         self.rewards = rewards
         self.mixing_weights = (
-            mixing_weights
-            if mixing_weights is not None
-            else [1.0] * len(rewards)
+            mixing_weights if mixing_weights is not None else [1.0] * len(rewards)
         )
 
         assert len(self.rewards) == len(
             self.mixing_weights
         ), "The number of rewards must match the number of mixing weights."
 
-        super().__init__(
-            f"mix:{','.join([r.get_name() for r in rewards])}"
-        )
+        super().__init__(f"mix:{','.join([r.get_name() for r in rewards])}")
 
     def evaluate(
         self,
@@ -180,10 +160,7 @@ class RewardMix(Reward):
     ) -> List[float]:
 
         ## TODO THIS SHOULD BE DONE IN PARALLEL !!!!!!!
-        evaluations = [
-            r.evaluate(candidates, **kwargs)
-            for r in self.rewards
-        ]
+        evaluations = [r.evaluate(candidates, **kwargs) for r in self.rewards]
 
         return (
             np.stack(
@@ -199,3 +176,34 @@ class RewardMix(Reward):
             .sum(0)
             .tolist()
         )
+
+
+class RewardStatic(Reward):
+    def __init__(
+        self,
+        reward_func: Callable,
+    ):
+        self.reward_func = reward_func
+
+        super().__init__(f"static:{reward_func.__name__}")
+
+    def evaluate(
+        self,
+        candidates: List[str],
+        **kwargs,
+    ) -> List[float]:
+
+        ## TODO THIS SHOULD BE DONE IN PARALLEL !!!!!!!
+        evaluations = self.reward_func(candidates, **kwargs)
+
+        return evaluations
+
+
+class RewardSum(RewardMix):
+    def __init__(
+        self,
+        reward_funcs: List[Callable],
+    ):
+        self.rewards = [RewardStatic(f) for f in reward_funcs]
+
+        super().__init__(rewards=self.rewards)
