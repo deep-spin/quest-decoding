@@ -107,14 +107,17 @@ class RemoteVLLM(LocalLanguageModel):
 
             input_data = ninput
 
+        ## skip special tokens at False was causing major issues.
         prompt_text = self.decode_tokenize(
-            input_data, skip_special_tokens=False, spaces_between_special_tokens=False
+            input_data, skip_special_tokens=True, spaces_between_special_tokens=False
         )
 
         # self.registry
         num_servers = len(asyncio.run(self.registry.get_all(self.value)))
-        temp_batch = min(max((len(prompt)) // num_servers, 2), self.batch_size)
+        temp_batch = min(max((len(prompt)) // max(num_servers, 1), 32), self.batch_size)
         ## there will be some remainder, but we will just send the remainder to the last server
+
+        # print("model_batch", temp_batch)
 
         # print(prompt_text)
         # Prepare request payload
@@ -193,7 +196,14 @@ class RemoteVLLM(LocalLanguageModel):
         """
 
         # Prepare prompts
-        prompts = [self.get_prompt(**data) for data in input_data] * n
+        # prompts = [self.get_prompt(**data) for data in input_data] * n
+
+        # FIXED: Correctly duplicate each prompt n times before moving to the next prompt
+        prompts = []
+        for data in input_data:
+            prompt = self.get_prompt(**data)
+            # Add this prompt n times
+            prompts.extend([prompt] * n)
 
         num_servers = len(asyncio.run(self.registry.get_all(self.value)))
         temp_batch = min(max((len(prompts)) // num_servers, 2), self.batch_size)
@@ -224,7 +234,7 @@ class RemoteVLLM(LocalLanguageModel):
 
         async with self.http_client as client:
             # server_url = self.registry.get(self.model_path).rstrip("/")
-            response = await client.post("v1/completions", payload)
+            response = await client.post("v1/completions", payload, track=False)
             # response = self.session.get(f"{self.server_url}/health")
             # response.raise_for_status()
 

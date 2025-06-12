@@ -33,8 +33,11 @@ class LanguageModel:
         Returns:
             The tokenized representation of the prompts.
         """
+
         prompt_txt = [self.get_prompt(**data) for data in prompt_data]
-        return self.tokenize(prompt_txt)
+        tokens = self.tokenize(prompt_txt)
+
+        return tokens
 
     def get_prompt(self, **input_data):
         """

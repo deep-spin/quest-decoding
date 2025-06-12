@@ -91,6 +91,10 @@ def process_queue():
                         "extra": [len(t) for t in request.texts],
                     }
                     print("falty packet? :" + str(request.texts))
+                    import traceback
+
+                    tb = traceback.format_exc()
+                    print(f"Error processing task {task_id}:\n{tb}")
                 finally:
                     TASK_QUEUE.task_done()
             else:

@@ -397,6 +397,21 @@ class Quest:
 
         if use_tqdm:
             iter = tqdm(range(n))
+
+            # We mod by 20 to avoid having too many progress bars on screen
+            unique_position = id(self) // 100 % 5
+
+            # Create a short unique identifier for the description
+            unique_id = hex(id(self))[-5:]  # Last 6 characters of hex ID
+
+            iter = tqdm(
+                range(n),
+                desc=f"Chain {unique_id}",
+                position=unique_position,
+                leave=True,
+                # ncols=100,
+            )  # Limit width to avoid overlap
+
         else:
             iter = range(n)
         # Run the chain for the specified number of steps

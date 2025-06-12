@@ -114,16 +114,21 @@ class RemoteReward(Reward):
             TimeoutError: If evaluation times out
         """
         async with self.http_client as client:
-            results = await client.post("evaluate", payload)
+            results = await client.post("evaluate", payload, track=False)
 
         rewards = [r for result in results for r in result["rewards"]]
 
         return rewards
 
-    def evaluate(self, candidates, use_tqdm=True, **kwargs):
+    def evaluate(self, candidates, use_tqdm=False, **kwargs):
 
         num_servers = len(asyncio.run(self.registry.get_all(self.model_path)))
-        temp_batch = min(max((len(candidates)) // num_servers, 2), self.batch_size)
+
+        temp_batch = min(
+            max((len(candidates)) // max(num_servers, 1), 32), self.batch_size
+        )
+
+        # print("reward_batch", temp_batch)
 
         payloads = [
             {"texts": t, "context": c} for t, c in zip(candidates, self._context)
